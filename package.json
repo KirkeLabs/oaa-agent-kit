@@ -1,0 +1,74 @@
+{
+  "name": "@kirkelabs/oaa-agent-kit",
+  "version": "0.1.0",
+  "description": "Create a fundable, Algorand-connected AI agent in minutes — it works on your behalf and pays for what it uses over x402, spending only within an on-chain LogicSig mandate (per-tx cap, payee allowlist, expiry). Pera Wallet-interoperable: fund and activate agents from your wallet. OAA (Open Agent Access) tooling included. Free & open source from Kirke Labs.",
+  "type": "module",
+  "bin": {
+    "oaa-agent-kit": "bin/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "examples/",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "lint": "eslint . --ext .js",
+    "format": "prettier --write \"**/*.{js,json,md}\""
+  },
+  "keywords": [
+    "algorand",
+    "ai-agents",
+    "agent",
+    "pera-wallet",
+    "perawallet",
+    "x402",
+    "oaa",
+    "open-agent-access",
+    "logicsig",
+    "agentic-payments",
+    "wallet",
+    "cli",
+    "nodejs"
+  ],
+  "author": "Soleman El Gelawi <soleman@kirkelabs.com> (https://www.kirkelabs.com)",
+  "contributors": [
+    "Steve Kirton <steve@kirkelabs.com> (https://www.kirkelabs.com)"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/KirkeLabs/oaa-agent-kit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KirkeLabs/oaa-agent-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KirkeLabs/oaa-agent-kit/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "algosdk": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@perawallet/connect": "^1.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@perawallet/connect": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}

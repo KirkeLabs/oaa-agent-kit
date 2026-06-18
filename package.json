@@ -23,7 +23,8 @@
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
     "lint": "eslint . --ext .js",
-    "format": "prettier --write \"**/*.{js,json,md}\""
+    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "prepublishOnly": "npm run lint && npm test"
   },
   "keywords": [
     "algorand",

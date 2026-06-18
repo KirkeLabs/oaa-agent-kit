@@ -4,28 +4,208 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-00dc94?style=flat)](https://nodejs.org)
 [![Algorand](https://img.shields.io/badge/Algorand-x402%20%2B%20OAA-00dc94?style=flat)](https://algorand.co)
 
-**Create a fundable AI agent that works on your behalf and pays its own way on Algorand — without ever being able to spend more than you allow.**
+**Give a small software helper its own pocket money and a job. It pays for what it needs — and it can never spend more than you allow, because the rules are enforced by the Algorand blockchain itself, not by trust.**
 
 ```bash
 npx oaa-agent-kit init my-agent
 ```
 
-You fund an agent, hand it a job, and it autonomously pays for the tools/services it uses over **x402** — but only within an **on-chain LogicSig mandate** (per-transaction cap, payee allowlist, expiry). Activate and fund agents straight from **Pera Wallet**. **OAA (Open Agent Access)** tooling included. Free & open source.
+---
 
-> The agent side of the agent economy. Pairs with `@kirkelabs/agent-readiness-scan` and `conversion-readiness-scan` (the merchant side that _charges_ agents).
+## What is this, in one paragraph?
+
+An **agent** is a little program that does a task for you — say, "fetch me a report" or "scan this website." Some of the tools an agent wants to use cost a tiny amount of money. This kit lets you create an agent that has **its own wallet**, hand it a **strict allowance** ("never spend more than 1 coin at a time, only pay these approved places, and stop working after a certain date"), and let it pay its own way. The allowance isn't a promise the agent makes — it's a **rule the blockchain enforces and cannot break**. You stay in control of the money the whole time.
+
+If you've never touched crypto or a command line before, that's fine — the [Quick start](#quick-start-on-testnet-free--no-real-money) below uses **free play money** and walks through every step.
+
+## Is this safe?
+
+Yes, by design — and here's *why*, not just "trust us":
+
+- **You can only ever lose what you fund.** An agent's entire budget is the amount you choose to send it. There's no link back to your main savings, no "drain the whole wallet" button. Send it 5 coins of play money, and 5 is the most that's ever at stake.
+- **The limits are enforced by the network, not by the agent's good behavior.** The agent's wallet is a special kind of account called a **LogicSig** (think: a wallet with a built-in rulebook). Every payment is checked against the rules by thousands of computers running Algorand. A payment that breaks a rule is simply **rejected** — it never happens.
+- **The agent cannot:** spend more than your per-payment cap, pay anyone outside your approved list, keep working after the expiry date you set, hand control of its wallet to someone else, or sneak the leftover money anywhere except **back to you**.
+- **You start on a free test network.** No real money is involved until *you* deliberately choose to switch to the real one (and we give you a checklist before you do).
+
+> Full technical threat model: [docs/SECURITY.md](./docs/SECURITY.md).
+
+## What you'll need
+
+- **A computer** with **Node.js version 20 or newer** installed. Node is a free program that runs JavaScript. Get it from [nodejs.org](https://nodejs.org) (the "LTS" version is perfect). To check if you already have it, open a terminal and type `node --version`.
+- **About 10 minutes.**
+- **Either** a generated test account (the kit makes one for you — no wallet app needed), **or** the free [Pera Wallet](https://perawallet.app/) phone app if you'd like to fund an agent the way a normal person sends crypto.
+- **No coding required** for the test-network walkthrough. Copy, paste, done.
+
+## Key words in plain English
+
+You'll meet these terms below. None of them are scary:
+
+| Word | What it actually means |
+|------|------------------------|
+| **Agent** | A small program that does a task on your behalf and can pay for tools it needs. |
+| **Owner** | You. The person who funds the agent and sets its rules. |
+| **Mandate** | The agent's **allowance rules**: how much per payment, who it may pay, when it expires. |
+| **Algorand** | A fast, low-fee blockchain (a shared, tamper-proof public ledger). It's where the agent's wallet and rules live. |
+| **TestNet** | A free practice version of Algorand. The coins are **fake** and worth nothing — perfect for learning. |
+| **MainNet** | The real Algorand network, where coins have real value. You only use this on purpose. |
+| **ALGO / microALGO** | ALGO is Algorand's coin. Amounts in code are usually in **microALGO**: 1 ALGO = 1,000,000 microALGO. (So `1_000_000` in the examples = 1 ALGO.) |
+| **Fee / gas** | A tiny charge (a fraction of a cent) the network takes to process a transaction. |
+| **LogicSig** | A "smart" wallet that comes with a **rulebook baked in**. The network refuses any payment that breaks the rules. This is what makes the agent safe. |
+| **x402** | A web standard for "pay-as-you-go" services: a website can reply *"402 — pay me this much and I'll give you the result."* Your agent can answer that automatically. |
+| **OAA passport** | "Open Agent Access" ID card. A small signed note proving *"this agent really was activated by its owner."* Some services ask for it. |
+| **Mnemonic / seed phrase** | 25 secret words that *are* the keys to an account. **Anyone with these words controls the account. Never share them.** |
 
 ---
 
-## Why this is safe by design
+## Quick start on TestNet (free — no real money)
 
-An autonomous agent holding a wallet is scary — unless its authority is bounded by the chain itself. Here it is:
+This creates a working agent using **free play money**. Nothing here can cost you anything.
 
-- **The agent account is a LogicSig.** Its address is a smart signature compiled from your mandate. Consensus rejects any spend that breaks the rules — there's no "trust the agent's code."
-- **You can only lose what you fund.** The aggregate budget _is_ the balance you send the agent address. Leftovers can only ever close back to **you**.
-- **Per-transaction cap + payee allowlist + expiry** are enforced on-chain. The agent **cannot** rekey itself, drain to an attacker, overpay, pay strangers, or act after expiry.
-- **TestNet by default.** Mainnet is an explicit choice.
+### 1. Install Node.js
+Download and install the **LTS** version from [nodejs.org](https://nodejs.org). Then open a terminal (Command Prompt / PowerShell on Windows, Terminal on Mac) and confirm:
+```bash
+node --version
+```
+You should see `v20.x.x` or higher.
 
-See [docs/SECURITY.md](./docs/SECURITY.md) for the full threat model.
+### 2. Make a "dev" account and save the secret words
+```bash
+npx oaa-agent-kit keygen
+```
+This prints an **address** (public, shareable) and a **mnemonic** (25 secret words). **Copy the 25 words somewhere safe and private** — they're the only key to this account. (On TestNet it's play money, but it's good practice to treat the phrase as precious.)
+
+### 3. Get free test ALGO
+Go to the **TestNet dispenser**: **https://bank.testnet.algorand.network/**
+Paste in the **address** from step 2 and request funds. Within seconds you'll have some free test ALGO. This is the money your *owner* account uses to fund the agent.
+
+### 4. Scaffold a starter agent
+```bash
+npx oaa-agent-kit init my-agent
+```
+This creates a folder `my-agent` with everything pre-wired: `agent.js`, `package.json`, and a `.env.example` file.
+
+### 5. Add your secret phrase
+Go into the new folder, copy the example settings file, and paste your 25 words into it:
+```bash
+cd my-agent
+cp .env.example .env
+```
+Open `.env` in any text editor and set:
+```
+OWNER_MNEMONIC="the twenty five words you saved in step 2"
+NETWORK=algorand-testnet
+```
+(The `.env` file keeps your secret out of the code. Don't share it or commit it to GitHub.)
+
+### 6. Install and run
+```bash
+npm install
+node agent.js
+```
+
+### 7. What success looks like
+The agent will:
+1. Build its **mandate** (allowance rules),
+2. Create its own **wallet address** and print it,
+3. **Fund** that wallet from your owner account (this is the agent's whole budget),
+4. **Activate** itself with an owner-signed passport,
+5. Run its task.
+
+You'll see the agent's address and the result of its run printed in the terminal. 🎉 You just funded and ran an autonomous agent that pays its own way — with hard, blockchain-enforced limits — for free.
+
+> The starter agent's task points at a placeholder URL (`TARGET_URL`). Until you point it at a real x402 service, the "pay" step simply has nothing to buy — that's expected. Everything up to and including funding + activation is real and live on TestNet.
+
+---
+
+## How funding actually works (the mental model)
+
+Picture three buckets of money:
+
+```
+   YOU (owner)                  THE AGENT'S WALLET                 A SERVICE
+   your test ALGO     ─fund─▶   (a LogicSig: budget + rulebook)   the agent pays
+                                          │                        for a tool/result
+                                          │  each payment is checked
+                                          ▼  against your rules by the network
+                                   ✅ within rules → it happens
+                                   ❌ breaks a rule → REJECTED
+   leftovers ◀──── can only ever close back to YOU
+```
+
+1. **You fund the agent's address.** Whatever you send is the agent's **entire budget**. Full stop. It has no other money and no way to reach yours.
+2. **The agent spends within the mandate.** Three rules ride along with every payment:
+   - **Per-transaction cap** — the most it can pay in a *single* payment (e.g. 1 ALGO).
+   - **Allowlist** — the *only* addresses it may pay (leave empty to allow any payee, or list specific ones to lock it down). It can always send leftovers back to you.
+   - **Expiry** — a future point after which it can't pay at all.
+3. **Leftovers come home.** Any unspent balance can only ever be swept **back to you, the owner** — never to a stranger.
+
+**Worked example.** You set the per-transaction cap to **1 ALGO** and fund the agent with **5 ALGO**. The agent can then make **at most five payments of 1 ALGO or less** to approved addresses before it simply runs out of money. It can't make a single 2-ALGO payment (over the cap → rejected). It can't pay an address you didn't approve (→ rejected). After the expiry date, it can't pay at all. The worst case is that all 5 test ALGO get spent on approved services — and not one microALGO more.
+
+---
+
+## Funding from Pera Wallet (no coding)
+
+Prefer to fund an agent the way you'd send crypto to a friend? Use the free **[Pera Wallet](https://perawallet.app/)** app:
+
+1. **Get the agent's address.** Run `npx oaa-agent-kit address --owner <your-address>` (or copy it from the agent's printout in step 7 above).
+2. **Open Pera**, tap **Send**, paste the agent's address, and send it some ALGO. *On MainNet this is **real money** — see the checklist below first.*
+3. **Activate the agent.** When prompted, approve the **activation signature** in Pera. This signs the agent's OAA passport — proof that you, the owner, authorized it. (Technical details: [docs/PERA.md](./docs/PERA.md).)
+
+That's it. Funding an agent is just sending ALGO to its address; the rulebook is already baked into that address.
+
+## How to stop or claw back the money
+
+You're never locked in. To wind an agent down:
+
+- **Stop funding it.** It can only spend what it already holds. Send no more, and its budget only shrinks.
+- **Let the expiry pass.** After the mandate's expiry round, the agent can't make any payment at all.
+- **Sweep the leftovers back to yourself.** Because the rules only ever allow the remaining balance to close **back to the owner**, you can recover whatever's unspent at any time.
+
+There is no scenario in which stopping an agent requires anyone's permission but yours.
+
+---
+
+## Going to MainNet (real money) — checklist & cautions
+
+TestNet is free and the default. **MainNet uses real ALGO with real value.** Before you switch (`network: 'algorand'`), go through this:
+
+- [ ] **Start tiny.** Fund with a small amount you're completely fine losing while you learn.
+- [ ] **Set a low per-transaction cap.** Match it to what a single service call should actually cost.
+- [ ] **Use a tight allowlist.** On MainNet, prefer listing the *exact* addresses the agent may pay rather than leaving it open.
+- [ ] **Set a sensible expiry.** Don't grant an open-ended mandate; pick a round/date when authority should lapse.
+- [ ] **Audit the code and your config.** Read [docs/SECURITY.md](./docs/SECURITY.md). Understand what your agent's "brain" will actually do before you fund it.
+- [ ] **Keep your mnemonic offline and secret.** It controls real money now.
+
+This kit is infrastructure, not financial advice. The on-chain limits are strong, but *you* choose the numbers — choose conservatively.
+
+---
+
+## FAQ / troubleshooting
+
+**Do I need to know how to code?**
+No, for the TestNet walkthrough. You copy and paste commands. To customize what the agent *does* (its "brain"), you'd write a little JavaScript — but the safety limits work regardless.
+
+**Can this drain my wallet?**
+**No.** The agent has its *own* separate wallet and no access to yours. It can only spend what you deliberately send it, never more than the per-payment cap, never to unapproved addresses, and never after expiry. These aren't promises — the Algorand network rejects any payment that breaks them. The most you can lose is exactly what you funded.
+
+**What's a mnemonic, and why the warnings?**
+It's the 25 secret words that *are* the keys to an account. Anyone who has them controls that account's money. Keep them offline, never paste them into a website, never share them, never commit your `.env` file.
+
+**It says "insufficient funds."**
+The account trying to pay doesn't have enough ALGO. On TestNet, top up the **owner** account at https://bank.testnet.algorand.network/ and re-run. Remember Algorand accounts also need a small minimum balance (0.1 ALGO) to stay open, so fund a little above what you intend to spend.
+
+**What does "402" mean?**
+It's a web response meaning *"Payment Required."* A service replies with `402` and the price; your agent reads the terms, checks them against your mandate, pays if (and only if) they fit, and retries. That whole handshake is the `pay` tool, built in.
+
+**The agent printed an address but "nothing happened" on the task.**
+The starter agent points at a placeholder service URL. Funding and activation are real; the *payment* step only does something once you point it at a live x402 service. That's expected for the out-of-the-box demo.
+
+---
+---
+
+# Developer reference
+
+Everything below is for developers building on the kit. The plain-English guide above is all most users need.
 
 ## Install
 
@@ -35,7 +215,7 @@ npm i @kirkelabs/oaa-agent-kit        # library
 npx oaa-agent-kit init my-agent
 ```
 
-Requires Node.js ≥ 20. `@perawallet/connect` is an optional peer dep (only for the browser/Pera flow).
+Requires Node.js ≥ 20. `@perawallet/connect` is an optional peer dependency (only needed for the browser/Pera flow).
 
 ## 60-second agent
 
@@ -104,11 +284,26 @@ console.log(await agent.run('buy one report'));
 - **Mandate** (`createMandate`) → **LogicSig** (`renderMandateTeal` / `compileMandate`) → **AgentAccount** (`AgentAccount.create`).
 - **Passport** (`buildPassport`/`signPassport`/`verifyPassport`) — OAA identity; the owner's signature _activates_ the agent. Services that set `requireAgentIdentity` can verify it.
 - **Pay** (`payAndFetch` / built-in `pay` tool) — handles the `402 → pay → retry` handshake, refusing anything outside the mandate before spending.
-- **Brain** — any `async ({task, history}) => action`. Rules today, an LLM tomorrow; the kit doesn't care.
+- **Brain** — any `async ({task, history, scratch}) => action`. Rules today, an LLM tomorrow; the kit doesn't care.
+
+## Public API
+
+| Export | Purpose |
+|--------|---------|
+| `getAlgod(opts)` | An `Algodv2` client for a public node (TestNet by default). |
+| `createMandate(opts)` | Build a frozen, validated mandate object. |
+| `checkPayment(txn, mandate, currentRound?)` | Pure JS validator mirroring the on-chain TEAL. |
+| `remainingBudget(mandate, balance)` | Spendable budget (balance minus min-balance). |
+| `renderMandateTeal` / `compileMandate` / `mandateAddress` | TEAL source, compiled program, agent address. |
+| `AgentAccount` | The LogicSig account; `AgentAccount.create({algod, mandate})`, `.address`, `.pay(...)`. |
+| `payAndFetch(url, opts)` / `makeAlgorandPayer(opts)` | The x402 agent-side handshake and on-chain payer. |
+| `createAgent(opts)` | The brain-pluggable agent loop with a built-in `pay` tool. |
+| `buildPassport` / `signPassport` / `verifyPassport` / `passportBytes` / `PASSPORT_SCHEMA` | OAA passport (agent identity). |
+| `LocalOwnerSigner` / `PeraConnector` / `fundAgent` | Owner signers (Node + browser) and the funding helper. |
 
 ## Pera Wallet
 
-Pera _activates_ agents: the user funds the agent address and signs the agent passport from their wallet over WalletConnect. See [docs/PERA.md](./docs/PERA.md). In Node/CI use `LocalOwnerSigner`; in the browser swap in `PeraConnector` — same interface.
+Pera _activates_ agents: the user funds the agent address and signs the agent passport from their wallet over WalletConnect. See [docs/PERA.md](./docs/PERA.md). In Node/CI use `LocalOwnerSigner`; in the browser swap in `PeraConnector` — same `{ address, signBytes, signTxns }` interface.
 
 ## CLI
 
@@ -119,11 +314,15 @@ oaa-agent-kit address --owner <addr>       # compute the agent address
 oaa-agent-kit init [dir]                   # scaffold a starter agent
 ```
 
+Mandate options for `mandate-teal` / `address`: `--per-tx <microAlgos>` (default 1000000), `--allow <a,b,c>`, `--expiry <round>` (default 40000000), `--max-fee <microAlgos>` (default 2000), `--network algorand|algorand-testnet` (default testnet).
+
 ## Limitations
 
 - LogicSig mandates bound **single transactions** (per-tx cap, payee, expiry, no rekey/hostile close). The _aggregate_ budget is the funded balance; for richer running budgets/recurring allowances use a stateful app (on the roadmap).
 - `compileMandate`/`AgentAccount.create`/funding/paying need an `algod` node (TestNet by default via AlgoNode).
 - This is infrastructure, not financial advice. Audit before mainnet. Start on TestNet.
+
+> The agent side of the agent economy. Pairs with `@kirkelabs/agent-readiness-scan` and `conversion-readiness-scan` (the merchant side that _charges_ agents).
 
 ## Licence
 

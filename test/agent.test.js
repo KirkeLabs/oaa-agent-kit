@@ -41,6 +41,7 @@ test('a built-in pay tool is always present', async () => {
 test('aggregate spend cap stops the agent paying beyond maxSpendMicroAlgos', async () => {
   const { createServer } = await import('node:http');
   // Mock 402 merchant: always 402 with a 0.4-ALGO charge, then 200 on any proof.
+  const svc = String(algosdk.generateAccount().addr);
   const server = createServer((req, res) => {
     req.on('data', () => {});
     req.on('end', () => {
@@ -51,7 +52,7 @@ test('aggregate spend cap stops the agent paying beyond maxSpendMicroAlgos', asy
       if (!req.headers['x-payment'])
         return send(402, {
           accepts: [
-            { network: 'algorand-testnet', amount: '400000', payTo: 'SVC', nonce: 'n' },
+            { network: 'algorand-testnet', amount: '400000', payTo: svc, nonce: 'n' },
           ],
         });
       return send(200, { ok: true });
@@ -82,10 +83,12 @@ test('aggregate spend cap stops the agent paying beyond maxSpendMicroAlgos', asy
       mandate,
       maxSpendMicroAlgos: 1_000_000, // budget for two 0.4-ALGO payments, not three
       maxSteps: 6,
+      fetchPolicy: { allowInsecure: true }, // local http test server
     });
     const out = await agent.run('spend repeatedly');
-    // 0.4 + 0.4 = 0.8 ok; the third (1.2 > 1.0) is refused by the aggregate cap.
-    assert.equal(agent.spent, 800_000);
+    // Each pay counts amount + maxFee (2000): 402000 x2 = 804000 ok; the third
+    // (1,206,000 > 1,000,000) is refused by the aggregate cap.
+    assert.equal(agent.spent, 804_000);
     assert.ok(out.history.some((h) => /aggregate spend cap/.test(h.error || '')));
   } finally {
     await new Promise((r) => server.close(r));

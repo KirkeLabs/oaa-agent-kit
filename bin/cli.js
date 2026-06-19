@@ -107,6 +107,8 @@ async function main() {
     await writeFile(join(dir, 'package.json'), STARTER_PKG);
     await writeFile(join(dir, 'agent.js'), STARTER_AGENT);
     await writeFile(join(dir, '.env.example'), STARTER_ENV);
+    // Ship a .gitignore so `cp .env.example .env` can never commit a seed phrase.
+    await writeFile(join(dir, '.gitignore'), STARTER_GITIGNORE);
     await writeFile(join(dir, 'README.md'), STARTER_README);
     console.log(
       `Scaffolded an agent in ${dir}\n  cd ${dir} && npm install && cp .env.example .env && node agent.js`,
@@ -150,13 +152,21 @@ const STARTER_PKG = `{
   "name": "my-oaa-agent",
   "private": true,
   "type": "module",
-  "dependencies": { "@kirkelabs/oaa-agent-kit": "^0.6.0" }
+  "dependencies": { "@kirkelabs/oaa-agent-kit": "^0.7.0" }
 }
 `;
 
 const STARTER_ENV = `# Owner account (dev). Generate with: npx oaa-agent-kit keygen
+# SECRET — never commit your real .env. The 25 words control all funds.
 OWNER_MNEMONIC="word1 word2 ... word25"
 NETWORK=algorand-testnet
+`;
+
+const STARTER_GITIGNORE = `# Secrets — NEVER commit these. The mnemonic controls all funds.
+.env
+*.key
+owner.json
+node_modules/
 `;
 
 const STARTER_AGENT = `import {

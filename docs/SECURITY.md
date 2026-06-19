@@ -87,10 +87,38 @@ sweep remaining funds back to the owner.
 - **You** choose the cap, allowlist, expiry, and how much to fund. Keep caps and
   funding small; prefer a tight allowlist for production.
 - **The owner key** (your Pera Wallet / mnemonic) is the root of trust. The kit
-  never transmits it; `LocalOwnerSigner` keeps it in-process, `PeraConnector`
-  leaves it in Pera. Treat a dev mnemonic as disposable and TestNet-only.
-- **The agent's brain/tools** are untrusted from the wallet's perspective —
-  that's the point. They can _propose_ spends; the mandate disposes.
+  never transmits it; `LocalOwnerSigner` keeps it in-process (JS cannot reliably
+  wipe it from memory — use it for dev/server only, prefer `PeraConnector` which
+  leaves the key in Pera). Treat a dev mnemonic as disposable and TestNet-only.
+
+## The off-chain (SDK) layer: treat the brain and all I/O as hostile
+
+The on-chain mandate bounds **fund movement**. It does NOT sanitise everything
+else, so at the SDK layer:
+
+- **The agent's brain/tools are untrusted *for fund movement only*.** They can
+  _propose_ spends; the mandate disposes. But a prompt-injected or malicious
+  brain also chooses tool names, **tool arguments**, and the **URL/body** of
+  every `pay` call. Validate tool arguments inside each tool; treat all tool
+  output and fetched content as attacker-controlled; never put secrets or
+  sensitive data where the brain can read them (`history`, `scratch`, the
+  values `run()` returns are all LLM-visible).
+- **SSRF:** `payAndFetch` refuses non-`https` and private/loopback/link-local/
+  metadata destinations and does not follow redirects. When the brain is
+  untrusted, also pass `fetchPolicy.allowedHosts` (an explicit payment-host
+  allowlist) so it cannot point payments at arbitrary hosts.
+- **Aggregate cap scope:** `createAgent({ maxSpendMicroAlgos })` counts amount +
+  fee, but only for spend that flows through the built-in `pay` tool / `ctx.pay`.
+  A custom tool that calls `account.pay`/`makeAlgorandPayer` directly bypasses
+  it. **Do not hand `account` to untrusted tools.** The on-chain aggregate
+  ceiling is the funded balance (or an `AllowanceApp`).
+- **Merchant input:** the 402 response is attacker-controlled. The kit picks the
+  cheapest acceptable term, validates `payTo`, binds the network, and bounds the
+  nonce; pass `fetchPolicy.maxAmountMicroAlgos` to cap the price independent of
+  the per-tx cap. A response timeout and body-size cap apply by default.
+- **Passports are bearer credentials.** Send them only over TLS to the intended
+  audience; set `audience` (and optionally `nonce`) and verify them at the
+  relying party. Default validity is short (1 hour).
 
 ## Known limitations
 

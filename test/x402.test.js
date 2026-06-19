@@ -59,6 +59,7 @@ test('agent pays a 402 and receives the result', async () => {
     const out = await payAndFetch(base + '/scan', {
       payer,
       body: { url: 'https://x.com' },
+      allowInsecure: true, // local http test server
     });
     assert.equal(out.paid, true);
     assert.equal(seen.amount, PRICE);
@@ -72,7 +73,7 @@ test('no payer surfaces the payment requirements', async () => {
   const { base, close } = await mockMerchant();
   try {
     await assert.rejects(
-      () => payAndFetch(base + '/scan', { body: {} }),
+      () => payAndFetch(base + '/scan', { body: {}, allowInsecure: true }),
       (e) => e.paymentRequired && e.paymentRequired.amount === PRICE,
     );
   } finally {
@@ -87,10 +88,38 @@ test('a payer that refuses (out of mandate) aborts the call', async () => {
       throw new Error('Refusing 402: amount_exceeds_per_tx_cap');
     };
     await assert.rejects(
-      () => payAndFetch(base + '/scan', { payer, body: {} }),
+      () => payAndFetch(base + '/scan', { payer, body: {}, allowInsecure: true }),
       /per_tx_cap/,
     );
   } finally {
     await close();
   }
+});
+
+test('payAndFetch (SSRF) refuses a private/metadata address', async () => {
+  const payer = async () => 'TX';
+  await assert.rejects(
+    () => payAndFetch('https://10.0.0.5/x', { payer }),
+    /private\/loopback/,
+  );
+  await assert.rejects(
+    () => payAndFetch('https://169.254.169.254/latest/meta-data', { payer }),
+    /private\/loopback/,
+  );
+});
+
+test('payAndFetch honours an explicit host allowlist', async () => {
+  const payer = async () => 'TX';
+  await assert.rejects(
+    () => payAndFetch('https://evil.example/x', { payer, allowedHosts: ['api.good.example'] }),
+    /not in allowedHosts/,
+  );
+});
+
+test('payAndFetch refuses a non-https endpoint by default', async () => {
+  const payer = async () => 'TX';
+  await assert.rejects(
+    () => payAndFetch('http://api.example.com/x', { payer }),
+    /non-https/,
+  );
 });

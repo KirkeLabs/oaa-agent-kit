@@ -6,6 +6,7 @@ import {
   buildPassport,
   signPassport,
   verifyPassport,
+  passportBytes,
   LocalOwnerSigner,
 } from '../src/index.js';
 
@@ -66,6 +67,21 @@ test('verifyPassport rejects a passport issued for another network', async () =>
   const signed = await signPassport(passport, owner);
   assert.equal(verifyPassport(signed, { network: 'algorand-testnet' }).ok, true);
   assert.equal(verifyPassport(signed, { network: 'algorand' }).reason, 'network_mismatch');
+});
+
+test('audience binds the passport to a relying party', async () => {
+  const { owner, agentAddress, mandate } = setup();
+  const passport = buildPassport({ agentAddress, owner: owner.address, mandate, audience: 'svc-A' });
+  const signed = await signPassport(passport, owner);
+  assert.equal(verifyPassport(signed, { audience: 'svc-A' }).ok, true);
+  assert.equal(verifyPassport(signed, { audience: 'svc-B' }).reason, 'audience_mismatch');
+});
+
+test('passportBytes rejects non-serializable (non-finite) values', () => {
+  assert.throws(
+    () => passportBytes({ schema: 'x', mandate: { network: 'algorand-testnet' }, bad: Infinity }),
+    /not serializable/,
+  );
 });
 
 test('buildPassport rejects an owner that does not match the mandate', () => {

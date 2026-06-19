@@ -3,6 +3,51 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/);
 versioning: [SemVer](https://semver.org/).
 
+## [0.7.0] — 2026-06-19
+
+Hardening from a third audit round on new angles: SDK/integration layer (agent &
+LLM threat model), supply-chain/CI/release integrity, and applied cryptography.
+The crypto core and dependency tree were found clean; these close the off-chain
+and release-pipeline risks.
+
+### Security — SDK / agent layer
+
+- **SSRF guard in `payAndFetch`.** Refuses non-`https` and private/loopback/
+  link-local/metadata destinations (IP literals and resolved hostnames), and no
+  longer follows redirects (`redirect: 'error'`) — which previously could leak
+  the payment proof and passport to a redirect target. New
+  `fetchPolicy.allowedHosts` enforces an explicit payment-host allowlist.
+- **DoS limits:** default per-request **timeout** (30s, `AbortController`) and a
+  **response-size cap** (1 MB) on all parsed bodies.
+- **Merchant input:** picks the **cheapest acceptable** 402 term (not
+  `accepts[0]`), validates `payTo` is a real address, and adds optional
+  `fetchPolicy.maxAmountMicroAlgos` to cap price independent of the per-tx cap;
+  merchant error text is sanitised before it can reach logs.
+- **Aggregate cap now counts fees** (amount + maxFee) and is documented as
+  governing only the built-in `pay`/`ctx.pay` path.
+
+### Security — crypto / passport
+
+- Passports gain optional **`audience`** (bind to one relying party) and
+  **`nonce`**, both signed; `verifyPassport({ audience })` enforces it. Default
+  validity shortened to **1 hour**. `canonical()` now rejects non-finite /
+  out-of-range / `undefined` values so two distinct passports can never share
+  signed bytes.
+
+### Security — supply chain / release
+
+- CI: least-privilege `permissions: contents: read`; actions pinned to full
+  commit SHAs. Added a **`release.yml`** that publishes with **npm provenance**
+  via OIDC on `v*` tags. Regenerated the lockfile (was stale at 0.2.0). Added a
+  root `SECURITY.md` and `CODEOWNERS`.
+- **Scaffold now writes a `.gitignore`** (`.env`, `*.key`, `owner.json`) so
+  `cp .env.example .env` can't lead to committing a seed phrase.
+
+> Action required by the maintainer before publish: **claim the `@kirkelabs` npm
+> scope**, enable npm 2FA, and configure trusted publishing (see release.yml).
+
+56 tests (was 47).
+
 ## [0.6.0] — 2026-06-19
 
 Hardening of the experimental `AllowanceApp` after two adversarial audits (an

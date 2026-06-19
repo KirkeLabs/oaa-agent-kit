@@ -25,17 +25,26 @@ export function createAgent({
   passport,
   maxSteps = 12,
   maxSpendMicroAlgos,
+  fetchPolicy = {},
   logger = () => {},
 }) {
   if (typeof brain !== 'function')
     throw new Error('createAgent requires a brain function');
 
   // Aggregate spend cap (defence in depth). A stateless LogicSig only bounds a
-  // SINGLE transaction; this caps cumulative spend across the whole run — most
-  // important under `allowlist:'ANY'`, where the chain does not restrict payees.
+  // SINGLE transaction; this caps cumulative spend (amount + fee) across the
+  // whole run — most important under `allowlist:'ANY'`, where the chain does not
+  // restrict payees. NOTE: this only governs spend that flows through THIS pay
+  // tool / ctx.pay; a custom tool that calls account.pay or makeAlgorandPayer
+  // directly bypasses it. The on-chain aggregate ceiling is the funded balance
+  // (or an AllowanceApp). Do not pass `account` to untrusted tools.
   let spent = 0;
+  const feePerTx = mandate ? Number(mandate.maxFee || 0) : 0;
 
   // Built-in tool: pay-and-fetch an OAA/x402 resource within the mandate.
+  // fetchPolicy (allowInsecure, allowedHosts, timeoutMs, maxBytes,
+  // maxAmountMicroAlgos) is forwarded to payAndFetch — set allowedHosts when the
+  // brain is untrusted so it cannot point payments at arbitrary/internal hosts.
   const payTool = async ({ url, method, body }) => {
     const basePayer =
       account && algod && mandate
@@ -43,11 +52,11 @@ export function createAgent({
         : undefined;
     const payer = basePayer
       ? async (req) => {
-          const amt = Number(req.amount) || 0;
+          const amt = (Number(req.amount) || 0) + feePerTx; // count fees too
           if (maxSpendMicroAlgos != null && spent + amt > maxSpendMicroAlgos) {
             throw new Error(
               `Refusing 402: aggregate spend cap exceeded ` +
-                `(${spent}+${amt} > ${maxSpendMicroAlgos} microALGO)`,
+                `(${spent}+${amt} > ${maxSpendMicroAlgos} microALGO, incl. fees)`,
             );
           }
           const txid = await basePayer(req);
@@ -55,7 +64,7 @@ export function createAgent({
           return txid;
         }
       : undefined;
-    return payAndFetch(url, { payer, method, body, passport });
+    return payAndFetch(url, { payer, method, body, passport, ...fetchPolicy });
   };
 
   const allTools = { pay: payTool, ...tools };

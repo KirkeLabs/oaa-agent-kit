@@ -1,0 +1,6 @@
+# Require maintainer review on security-critical paths.
+# (Replace with real GitHub handles/teams.)
+/src/            @KirkeLabs/maintainers
+/bin/            @KirkeLabs/maintainers
+/package.json    @KirkeLabs/maintainers
+/.github/        @KirkeLabs/maintainers

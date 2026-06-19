@@ -25,6 +25,8 @@ export function buildPassport({
   owner,
   mandate = account?.mandate,
   purpose = 'general',
+  audience,
+  nonce,
   issuedAt = Date.now(),
   expiresAt,
 }) {
@@ -34,8 +36,11 @@ export function buildPassport({
   if (!algosdk.isValidAddress(String(owner))) throw new Error('owner is invalid');
   if (String(owner) !== String(mandate.owner))
     throw new Error('passport owner does not match mandate.owner');
-  const exp = expiresAt ?? issuedAt + 24 * 60 * 60 * 1000;
-  return {
+  // Default to a 1-hour validity (a passport is a bearer credential — keep it
+  // short). `audience` binds it to one relying party and `nonce` lets a relying
+  // party enforce single use; both are signed when present.
+  const exp = expiresAt ?? issuedAt + 60 * 60 * 1000;
+  const p = {
     schema: PASSPORT_SCHEMA,
     agentAddress: String(agentAddress),
     owner: String(owner),
@@ -52,6 +57,9 @@ export function buildPassport({
       network: mandate.network,
     },
   };
+  if (audience !== undefined) p.audience = String(audience);
+  if (nonce !== undefined) p.nonce = String(nonce);
+  return p;
 }
 
 /**
@@ -112,13 +120,15 @@ export async function signPassport(passport, ownerSigner) {
  * chain you operate on) whenever you can: it stops a passport issued for another
  * chain from being accepted on yours.
  */
-export function verifyPassport(signed, { now = Date.now(), network } = {}) {
+export function verifyPassport(signed, { now = Date.now(), network, audience } = {}) {
   try {
     const { passport, signature, signer } = signed || {};
     if (!passport || !signature) return { ok: false, reason: 'missing_fields' };
     if (signer !== passport.owner) return { ok: false, reason: 'signer_owner_mismatch' };
     if (network && passport.mandate?.network !== network)
       return { ok: false, reason: 'network_mismatch' };
+    if (audience != null && String(passport.audience) !== String(audience))
+      return { ok: false, reason: 'audience_mismatch' };
     if (now > passport.expiresAt) return { ok: false, reason: 'passport_expired' };
     const ok = algosdk.verifyBytes(
       passportBytes(passport),
@@ -132,6 +142,13 @@ export function verifyPassport(signed, { now = Date.now(), network } = {}) {
 }
 
 function canonical(v) {
+  // Reject values that JSON.stringify renders ambiguously or non-injectively,
+  // so two distinct passports can never share signed bytes.
+  if (v === undefined) throw new Error('passport not serializable: undefined value');
+  if (typeof v === 'number' && !Number.isFinite(v))
+    throw new Error('passport not serializable: non-finite number');
+  if (typeof v === 'number' && Math.abs(v) >= 1e21)
+    throw new Error('passport not serializable: number out of safe range');
   if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
   if (v && typeof v === 'object') {
     return `{${Object.keys(v)

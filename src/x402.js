@@ -11,7 +11,13 @@
  * pre-checks the 402 terms against the mandate before paying.
  */
 
+import algosdk from 'algosdk';
 import { checkPayment } from './mandate.js';
+import dns from 'node:dns/promises';
+import net from 'node:net';
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_BYTES = 1_000_000; // cap on a 402/result body we will buffer
 
 /** True for https URLs, or http on localhost/loopback (dev/testing only). */
 function isSecureUrl(url) {
@@ -27,24 +33,125 @@ function isSecureUrl(url) {
   }
 }
 
-export async function payAndFetch(
-  url,
-  { payer, fetchImpl = fetch, method = 'POST', body, passport, allowInsecure = false } = {},
-) {
-  // A 402 flow exchanges payment proofs over the wire; require TLS unless the
-  // caller is explicitly testing against localhost (or opts in to insecure).
-  if (payer && !allowInsecure && !isSecureUrl(url)) {
-    throw new Error(
-      `payAndFetch refuses a non-https payment endpoint: ${url} (pass allowInsecure to override)`,
+/** Private / loopback / link-local / ULA / metadata ranges that must not be reachable. */
+function isPrivateIp(ip) {
+  const v = net.isIP(ip);
+  if (v === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    return (
+      a === 10 ||
+      a === 127 ||
+      a === 0 ||
+      (a === 169 && b === 254) || // link-local incl. 169.254.169.254 metadata
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) // CGNAT
     );
   }
+  if (v === 6) {
+    const ipl = ip.toLowerCase().replace(/^\[|\]$/g, '');
+    return (
+      ipl === '::1' ||
+      ipl === '::' ||
+      ipl.startsWith('fe80') || // link-local
+      ipl.startsWith('fc') ||
+      ipl.startsWith('fd') || // ULA
+      ipl.startsWith('::ffff:') // IPv4-mapped (re-checked below)
+    );
+  }
+  return false;
+}
+
+/**
+ * SSRF guard: scheme check + block requests to private/loopback/link-local/
+ * metadata addresses, and (when given) restrict to an explicit host allowlist.
+ * For hostnames we resolve and reject if ANY resolved address is private
+ * (best-effort; not DNS-rebinding-proof — use `allowedHosts` for untrusted brains).
+ */
+async function assertSafeUrl(url, { allowInsecure, allowedHosts } = {}) {
+  let u;
+  try {
+    u = new URL(String(url));
+  } catch {
+    throw new Error(`payAndFetch: invalid URL: ${url}`);
+  }
+  if (!allowInsecure && !isSecureUrl(url))
+    throw new Error(`payAndFetch refuses a non-https endpoint: ${url} (pass allowInsecure to override)`);
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  if (Array.isArray(allowedHosts) && allowedHosts.length > 0) {
+    if (!allowedHosts.includes(u.hostname) && !allowedHosts.includes(host))
+      throw new Error(`payAndFetch: host not in allowedHosts: ${u.hostname}`);
+    return; // explicit allowlist is authoritative
+  }
+  // Loopback/private/metadata are reachable ONLY with an explicit allowInsecure
+  // (local testing) — never for a default, untrusted-brain-driven payment.
+  if (net.isIP(host)) {
+    const mapped = host.toLowerCase().startsWith('::ffff:') ? host.slice(7) : host;
+    if ((isPrivateIp(host) || isPrivateIp(mapped)) && !allowInsecure)
+      throw new Error(`payAndFetch refuses a private/loopback address: ${host}`);
+    return;
+  }
+  if (host === 'localhost') {
+    if (!allowInsecure)
+      throw new Error('payAndFetch refuses localhost (pass allowInsecure for local testing)');
+    return;
+  }
+  // Hostname: resolve and reject if it points anywhere internal.
+  let addrs = [];
+  try {
+    addrs = (await dns.lookup(host, { all: true })).map((a) => a.address);
+  } catch {
+    throw new Error(`payAndFetch: could not resolve host: ${host}`);
+  }
+  for (const a of addrs) {
+    const mapped = a.toLowerCase().startsWith('::ffff:') ? a.slice(7) : a;
+    if ((isPrivateIp(a) || isPrivateIp(mapped)) && !allowInsecure)
+      throw new Error(`payAndFetch refuses a host resolving to a private address: ${host} -> ${a}`);
+  }
+}
+
+/** Read a response body with a hard size cap, then JSON-parse it. */
+async function readJsonCapped(res, maxBytes) {
+  const len = Number(res.headers.get('content-length'));
+  if (Number.isFinite(len) && len > maxBytes)
+    throw new Error(`response too large (${len} > ${maxBytes} bytes)`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > maxBytes) throw new Error(`response too large (> ${maxBytes} bytes)`);
+  return JSON.parse(buf.toString('utf8'));
+}
+
+export async function payAndFetch(
+  url,
+  {
+    payer,
+    fetchImpl = fetch,
+    method = 'POST',
+    body,
+    passport,
+    allowInsecure = false,
+    allowedHosts,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxBytes = DEFAULT_MAX_BYTES,
+    maxAmountMicroAlgos,
+  } = {},
+) {
+  // SSRF + TLS guard before any request leaves the process.
+  await assertSafeUrl(url, { allowInsecure, allowedHosts });
+
   const headers = { 'content-type': 'application/json' };
-  const send = (extra) =>
-    fetchImpl(url, {
-      method,
-      headers: { ...headers, ...extra },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+  const send = (extra) => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    return Promise.resolve(
+      fetchImpl(url, {
+        method,
+        headers: { ...headers, ...extra },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        redirect: 'error', // never follow redirects (would leak proof/passport, enable SSRF)
+        signal: ac.signal,
+      }),
+    ).finally(() => clearTimeout(timer));
+  };
 
   // Do NOT disclose the passport (owner/agent addresses, caps, allowlist) on the
   // unpaid probe — only attach it to the paid retry, to the endpoint we're paying.
@@ -54,13 +161,19 @@ export async function payAndFetch(
 
   const first = await send();
   if (first.status !== 402) {
-    if (first.ok) return first.json();
+    if (first.ok) return readJsonCapped(first, maxBytes);
     throw new Error(`Unexpected response: HTTP ${first.status}`);
   }
 
-  const env = await first.json();
-  const req = env.accepts && env.accepts[0];
-  if (!req) throw new Error('Malformed 402 (no payment requirements)');
+  const env = await readJsonCapped(first, maxBytes);
+  // Choose the cheapest acceptable term (a hostile merchant could order accepts[]
+  // worst-first); ignore terms on the wrong network or above the optional ceiling.
+  const candidates = (Array.isArray(env.accepts) ? env.accepts : [])
+    .filter((r) => r && r.payTo != null && Number.isFinite(Number(r.amount)))
+    .filter((r) => maxAmountMicroAlgos == null || Number(r.amount) <= Number(maxAmountMicroAlgos))
+    .sort((a, b) => Number(a.amount) - Number(b.amount));
+  const req = candidates[0];
+  if (!req) throw new Error('Malformed 402 (no acceptable payment requirements)');
   if (typeof payer !== 'function') {
     const e = new Error('Payment required but no payer configured');
     e.paymentRequired = req;
@@ -77,14 +190,15 @@ export async function payAndFetch(
   if (!second.ok) {
     let reason = `HTTP ${second.status}`;
     try {
-      const e = await second.json();
-      reason = e.reason || e.error || reason;
+      const e = await readJsonCapped(second, maxBytes);
+      // Merchant-controlled text — keep it short and single-line to avoid log injection.
+      reason = String(e.reason || e.error || reason).replace(/[\r\n]+/g, ' ').slice(0, 200);
     } catch {
       /* ignore */
     }
     throw new Error(`Payment not accepted: ${reason}`);
   }
-  return second.json();
+  return readJsonCapped(second, maxBytes);
 }
 
 /**
@@ -138,6 +252,8 @@ export function makeAlgorandPayer({ algod, account, mandate }) {
     if (nonce && new TextEncoder().encode(nonce).length > 1024) {
       throw new Error('Refusing 402: nonce too large for transaction note (>1KB)');
     }
+    if (!algosdk.isValidAddress(String(req.payTo)))
+      throw new Error(`Refusing 402: invalid payTo address (${req.payTo})`);
     const amount = Number(req.amount);
     // Fast pre-check (amount/receiver/policy). The authoritative check against
     // the real fee, current round, and expiry happens inside account.pay().

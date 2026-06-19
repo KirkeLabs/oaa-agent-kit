@@ -39,16 +39,18 @@ export async function payAndFetch(
     );
   }
   const headers = { 'content-type': 'application/json' };
-  if (passport)
-    headers['x-agent-passport'] = Buffer.from(JSON.stringify(passport)).toString(
-      'base64',
-    );
   const send = (extra) =>
     fetchImpl(url, {
       method,
       headers: { ...headers, ...extra },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+
+  // Do NOT disclose the passport (owner/agent addresses, caps, allowlist) on the
+  // unpaid probe — only attach it to the paid retry, to the endpoint we're paying.
+  const passportHeader = passport
+    ? { 'x-agent-passport': Buffer.from(JSON.stringify(passport)).toString('base64') }
+    : {};
 
   const first = await send();
   if (first.status !== 402) {
@@ -71,7 +73,7 @@ export async function payAndFetch(
     JSON.stringify({ network: req.network, txid, nonce: req.nonce }),
   ).toString('base64');
 
-  const second = await send({ 'x-payment': proof });
+  const second = await send({ 'x-payment': proof, ...passportHeader });
   if (!second.ok) {
     let reason = `HTTP ${second.status}`;
     try {
@@ -83,6 +85,38 @@ export async function payAndFetch(
     throw new Error(`Payment not accepted: ${reason}`);
   }
   return second.json();
+}
+
+/**
+ * MERCHANT-SIDE proof verification. A bare `{network, txid, nonce}` proof is NOT
+ * sufficient on its own — it must be checked against the confirmed on-chain
+ * transaction. Fetch that transaction (via your algod/indexer) and pass its
+ * decoded fields here; this confirms the payment actually settled to you, for
+ * the right amount, on the right chain, bound to your challenge nonce.
+ *
+ * @param {object} proof   decoded `{network, txid, nonce}` from the x-payment header
+ * @param {object} onchain the confirmed txn as seen on-chain:
+ *        `{ receiver, amount, note, confirmedRound, genesisHashB64 }`
+ * @param {object} expected `{ payTo, minAmount, nonce, network }`
+ * @returns {{ok:true} | {ok:false, reason:string}}
+ */
+export function verifyPaymentProof(proof, onchain, expected) {
+  const p = proof || {};
+  const t = onchain || {};
+  const e = expected || {};
+  if (!p.txid) return { ok: false, reason: 'proof_missing_txid' };
+  if (!(Number(t.confirmedRound) > 0)) return { ok: false, reason: 'not_confirmed' };
+  if (e.network && p.network !== e.network) return { ok: false, reason: 'network_mismatch' };
+  if (String(t.receiver) !== String(e.payTo)) return { ok: false, reason: 'wrong_receiver' };
+  if (!(Number(t.amount) >= Number(e.minAmount ?? 0)))
+    return { ok: false, reason: 'amount_too_low' };
+  // The challenge nonce must match the proof AND the on-chain note (the binding).
+  if (e.nonce != null) {
+    const note = t.note == null ? '' : String(t.note);
+    if (String(p.nonce) !== String(e.nonce) || note !== String(e.nonce))
+      return { ok: false, reason: 'nonce_mismatch' };
+  }
+  return { ok: true };
 }
 
 /**

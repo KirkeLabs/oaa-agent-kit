@@ -4,30 +4,40 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-00dc94?style=flat)](https://nodejs.org)
 [![Algorand](https://img.shields.io/badge/Algorand-x402%20%2B%20OAA-00dc94?style=flat)](https://algorand.co)
 
-**Give a small software helper its own pocket money and a job. It pays for what it needs — and it can never spend more than you allow, because the rules are enforced by the Algorand blockchain itself, not by trust.**
+**Give a small software helper its own pocket money and a job. It pays for what it needs, within limits the Algorand blockchain enforces on every transaction — a per-payment cap, an approved-payee policy, and an expiry.**
 
 ```bash
 npx oaa-agent-kit init my-agent
 ```
 
+> ⚠️ **Experimental, unaudited software, provided "as is."** The on-chain rules
+> bound each individual transaction; they do **not** guarantee your total funds
+> are safe. Read **[Risk warning](#risk-warning)** and **[LEGAL.md](./LEGAL.md)**
+> before using real funds. Nothing here is financial advice.
+
 ---
 
 ## What is this, in one paragraph?
 
-An **agent** is a little program that does a task for you — say, "fetch me a report" or "scan this website." Some of the tools an agent wants to use cost a tiny amount of money. This kit lets you create an agent that has **its own wallet**, hand it a **strict allowance** ("never spend more than 1 coin at a time, only pay these approved places, and stop working after a certain date"), and let it pay its own way. The allowance isn't a promise the agent makes — it's a **rule the blockchain enforces and cannot break**. You stay in control of the money the whole time.
+An **agent** is a little program that does a task for you — say, "fetch me a report" or "scan this website." Some of the tools an agent wants to use cost a tiny amount of money. This kit lets you create an agent that has **its own wallet**, hand it an **allowance** ("don't spend more than 1 coin at a time, only pay these approved places, and stop working after a certain date"), and let it pay its own way. Those allowance rules are checked by the Algorand network on every transaction — a payment that breaks them is rejected. You stay in control of the money the whole time.
 
 If you've never touched crypto or a command line before, that's fine — the [Quick start](#quick-start-on-testnet-free--no-real-money) below uses **free play money** and walks through every step.
 
-## Is this safe?
+## How the safety model works (and its limits)
 
-Yes, by design — and here's *why*, not just "trust us":
+Here's *why* the limits hold, and — just as important — where they stop:
 
-- **You can only ever lose what you fund.** An agent's entire budget is the amount you choose to send it. There's no link back to your main savings, no "drain the whole wallet" button. Send it 5 coins of play money, and 5 is the most that's ever at stake.
-- **The limits are enforced by the network, not by the agent's good behavior.** The agent's wallet is a special kind of account called a **LogicSig** (think: a wallet with a built-in rulebook). Every payment is checked against the rules by thousands of computers running Algorand. A payment that breaks a rule is simply **rejected** — it never happens.
-- **The agent cannot:** spend more than your per-payment cap, pay anyone outside your approved list, keep working after the expiry date you set, hand control of its wallet to someone else, or sneak the leftover money anywhere except **back to you**.
-- **You start on a free test network.** No real money is involved until *you* deliberately choose to switch to the real one (and we give you a checklist before you do).
+- **Your exposure is the amount you fund.** An agent's budget is whatever you send its address; there's no link to your main wallet and no "drain everything" path. Barring loss of your own seed phrase (see below), the funded balance is the ceiling on what's at stake.
+- **The limits are enforced by the network, not by the agent's good behavior.** The agent's wallet is a **LogicSig** — an account with a rulebook compiled into it. Every payment is checked by Algorand consensus; one that breaks a rule (over the cap, wrong payee, past expiry, rekey, hostile close, or wrong network) is rejected.
+- **By default the agent can pay only *you*.** With no allowlist, the only permitted destination is the owner. To let it pay services you list their addresses; to let it pay *any* address you must explicitly opt in with `allowlist: 'ANY'` — which makes it a **permissionless** account (see ["A note on `'ANY'`"](#a-note-on-paying-any-address)).
+- **What this does *not* protect against:** anyone who obtains your **owner seed phrase** controls all your funds; under `allowlist: 'ANY'` funds can reach a third party; the enforcement logic (TEAL) is generated and **not formally verified or independently audited**; and a buggy "brain" can still spend the whole funded balance on approved payees. The rules cap each transaction — they are not a guarantee that your total is safe.
+- **You start on a free test network.** No real money is involved until *you* deliberately switch to MainNet (there's a [checklist](#going-to-mainnet-real-money--checklist--cautions) first).
 
-> Full technical threat model: [docs/SECURITY.md](./docs/SECURITY.md).
+> Full technical threat model: [docs/SECURITY.md](./docs/SECURITY.md) · Regulatory & legal notices: [LEGAL.md](./LEGAL.md).
+
+## Risk warning
+
+Crypto-assets are volatile and largely unregulated. This is **experimental, unaudited developer software provided "as is," without warranty** (see [LICENSE](./LICENSE)). In particular: (i) if you set `allowlist: 'ANY'`, **any third party** who has the agent's public rules can direct its balance, in cap-sized payments, to an address of their choosing; (ii) the on-chain enforcement logic has **not** been formally verified or independently audited; (iii) **anyone with your owner seed phrase controls all your funds**; (iv) the per-transaction cap, payee policy and expiry constrain *individual* transactions and do **not** guarantee your aggregate funds are safe. **You may lose some or all of the funds you allocate.** Nothing in this project is financial, legal, or investment advice. See [LEGAL.md](./LEGAL.md).
 
 ## What you'll need
 
@@ -137,7 +147,7 @@ Picture three buckets of money:
    - **Per-transaction cap** — the most it can pay in a *single* payment (e.g. 1 ALGO).
    - **Allowlist** — the *only* addresses it may pay. **Safe default: leave it empty and the agent can pay *only you*, the owner** — funds can never be redirected to a stranger. List specific service addresses to let it pay them. (To let it pay *any* address — e.g. arbitrary pay-as-you-go services whose address you don't know in advance — you must explicitly set `allowlist: 'ANY'`, which turns the agent into a *permissionless* spend account. See ["A note on `'ANY'`"](#a-note-on-paying-any-address) before you do.)
    - **Expiry** — a future point after which it can't pay at all.
-3. **Leftovers come home.** Any unspent balance can only ever be swept **back to you, the owner** — never to a stranger.
+3. **Leftovers come home.** A *close* of the account can only ever sweep the remaining balance **back to you, the owner** — the rules forbid closing it out to anyone else.
 
 **Worked example.** You set the per-transaction cap to **1 ALGO** and fund the agent with **5 ALGO**. The agent can then make **at most five payments of 1 ALGO or less** to approved addresses before it simply runs out of money. It can't make a single 2-ALGO payment (over the cap → rejected). It can't pay an address you didn't approve (→ rejected). After the expiry date, it can't pay at all. The worst case is that all 5 test ALGO get spent on approved services — and not one microALGO more.
 
@@ -190,7 +200,7 @@ This kit is infrastructure, not financial advice. The on-chain limits are strong
 No, for the TestNet walkthrough. You copy and paste commands. To customize what the agent *does* (its "brain"), you'd write a little JavaScript — but the safety limits work regardless.
 
 **Can this drain my wallet?**
-**No.** The agent has its *own* separate wallet and no access to yours. It can only spend what you deliberately send it, never more than the per-payment cap, never to unapproved addresses, and never after expiry. These aren't promises — the Algorand network rejects any payment that breaks them. The most you can lose is exactly what you funded.
+**It cannot reach your main wallet.** The agent has its *own* separate wallet and no access to yours; it can only spend what you deliberately send it, and the network rejects any payment over the per-payment cap, after expiry, or — unless you chose `allowlist: 'ANY'` — to an address you didn't approve. So your exposure is capped at the amount you fund the agent with. Two caveats in plain terms: under `allowlist: 'ANY'` those approved-payee limits are off (any address can be paid), and whoever holds **your** 25-word owner phrase controls your real wallet — so keep it secret. See the [Risk warning](#risk-warning).
 
 **What's a mnemonic, and why the warnings?**
 It's the 25 secret words that *are* the keys to an account. Anyone who has them controls that account's money. Keep them offline, never paste them into a website, never share them, never commit your `.env` file.
@@ -243,10 +253,10 @@ const sp = await algod.getTransactionParams().do();
 const mandate = createMandate({
   owner: owner.address,
   perTxMicroAlgos: 1_000_000, // ≤ 1 ALGO per payment
-  // [] = OWNER-ONLY (safe default) · ['ADDR',…] = allow those services ·
-  // 'ANY' = pay anyone (permissionless — see SECURITY.md). This demo pays an
-  // arbitrary service, so it opts in to 'ANY':
-  allowlist: 'ANY',
+  allowlist: [], // [] = OWNER-ONLY (safe default). List service addresses to
+  // let the agent pay them, e.g. allowlist: ['SERVICE_ADDR']. Only use
+  // allowlist: 'ANY' (permissionless — see Risk warning) if you accept that
+  // anyone could then direct the agent's balance to any address.
   expiryRound: Number(sp.lastValid) + 1_000_000,
   network: 'algorand-testnet',
 });

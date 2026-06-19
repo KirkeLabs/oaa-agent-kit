@@ -39,6 +39,9 @@ export class AgentAccount {
       Number(suggestedParams.lastValid),
       this.mandate.expiryRound,
     );
+    const genesisHash = suggestedParams.genesisHash
+      ? Buffer.from(suggestedParams.genesisHash).toString('base64')
+      : undefined;
     const check = checkPayment(
       {
         type: 'pay',
@@ -47,6 +50,7 @@ export class AgentAccount {
         receiver: String(to),
         lastValid,
         groupSize: 1,
+        genesisHash,
       },
       this.mandate,
       currentRound,

@@ -9,16 +9,33 @@
  */
 
 import algosdk from 'algosdk';
-import { ZERO_ADDR } from './mandate.js';
+import { ZERO_ADDR, GENESIS_HASHES } from './mandate.js';
 
 /**
  * Render the TEAL source enforcing a mandate. Deterministic from the mandate,
  * so the agent's address is reproducible by anyone who has the mandate.
+ *
+ * Network distinction: the mandate's network genesis hash is baked into the
+ * program as a constant, so the SAME mandate compiles to a DIFFERENT address on
+ * TestNet vs MainNet. This prevents accidental cross-network address reuse (and
+ * the SDK additionally refuses, via `checkPayment`, to build a transaction
+ * whose genesis hash does not match the mandate's network). NOTE: stateless
+ * TEAL cannot READ the genesis at runtime (there is no `txn`/`global`
+ * GenesisHash field), so this is an address-level + SDK-level binding, not a
+ * consensus-level one — see docs/SECURITY.md. Do not fund an agent address on a
+ * network it was not generated for.
  */
 export function renderMandateTeal(mandate) {
+  const genesisHash = GENESIS_HASHES[mandate.network];
+  if (!genesisHash) throw new Error(`no genesis hash for network: ${mandate.network}`);
   const L = [];
   L.push('#pragma version 8');
   L.push('// oaa-agent-kit mandate — auto-generated. Do not hand-edit.');
+
+  // Bake the network genesis hash into the program (no-op at runtime) so the
+  // compiled address is network-specific.
+  L.push(`byte b64 ${genesisHash}`);
+  L.push('pop');
 
   // type == pay
   L.push('txn TypeEnum');

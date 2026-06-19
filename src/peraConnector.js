@@ -60,6 +60,26 @@ export function peraSignDataPayload(bytes, message = 'Activate OAA agent') {
   return [{ data: Buffer.from(bytes), message }];
 }
 
+/**
+ * Human-readable summary of what a passport authorises, for the wallet's signing
+ * prompt — so the owner sees the actual agent, network, and limits rather than a
+ * generic "Activate OAA agent" string they cannot evaluate.
+ */
+export function passportSignMessage(passport) {
+  const m = passport?.mandate || {};
+  const payees = m.anyPayee
+    ? 'ANY address (permissionless)'
+    : m.allowlist?.length
+      ? `${m.allowlist.length} allowlisted payee(s) + owner`
+      : 'owner only';
+  return [
+    'Activate OAA agent',
+    `agent: ${passport?.agentAddress}`,
+    `network: ${m.network}`,
+    `cap: ${m.perTxMicroAlgos} microALGO/tx · payees: ${payees}`,
+  ].join('\n');
+}
+
 export class PeraConnector {
   constructor({ chainId, _client } = {}) {
     this._chainId = chainId; // 416001 mainnet, 416002 testnet
@@ -97,14 +117,15 @@ export class PeraConnector {
     this.address = null;
   }
   /** Sign arbitrary bytes (passport activation) via Pera's signData (ARC-60). */
-  async signBytes(bytes) {
+  async signBytes(bytes, opts = {}) {
     const pera = await this._client();
     if (typeof pera.signData !== 'function') {
       throw new Error(
         'This Pera version lacks signData; update @perawallet/connect to sign passports.',
       );
     }
-    const out = await pera.signData(peraSignDataPayload(bytes), this.address);
+    const message = opts.message || 'Activate OAA agent';
+    const out = await pera.signData(peraSignDataPayload(bytes, message), this.address);
     const sig = out[0];
     return sig instanceof Uint8Array ? sig : new Uint8Array(Buffer.from(sig, 'base64'));
   }

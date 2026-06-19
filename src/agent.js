@@ -24,17 +24,37 @@ export function createAgent({
   algod,
   passport,
   maxSteps = 12,
+  maxSpendMicroAlgos,
   logger = () => {},
 }) {
   if (typeof brain !== 'function')
     throw new Error('createAgent requires a brain function');
 
+  // Aggregate spend cap (defence in depth). A stateless LogicSig only bounds a
+  // SINGLE transaction; this caps cumulative spend across the whole run — most
+  // important under `allowlist:'ANY'`, where the chain does not restrict payees.
+  let spent = 0;
+
   // Built-in tool: pay-and-fetch an OAA/x402 resource within the mandate.
   const payTool = async ({ url, method, body }) => {
-    const payer =
+    const basePayer =
       account && algod && mandate
         ? makeAlgorandPayer({ algod, account, mandate })
         : undefined;
+    const payer = basePayer
+      ? async (req) => {
+          const amt = Number(req.amount) || 0;
+          if (maxSpendMicroAlgos != null && spent + amt > maxSpendMicroAlgos) {
+            throw new Error(
+              `Refusing 402: aggregate spend cap exceeded ` +
+                `(${spent}+${amt} > ${maxSpendMicroAlgos} microALGO)`,
+            );
+          }
+          const txid = await basePayer(req);
+          spent += amt;
+          return txid;
+        }
+      : undefined;
     return payAndFetch(url, { payer, method, body, passport });
   };
 
@@ -74,5 +94,11 @@ export function createAgent({
     return { result: undefined, history, steps: maxSteps, stopped: 'max_steps' };
   }
 
-  return { run, tools: allTools };
+  return {
+    run,
+    tools: allTools,
+    get spent() {
+      return spent;
+    },
+  };
 }

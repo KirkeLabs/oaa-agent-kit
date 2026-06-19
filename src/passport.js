@@ -74,9 +74,17 @@ export async function verifyPassportAddress(signed, algod) {
   }
 }
 
-/** Deterministic bytes for signing/verifying (stable, sorted-key JSON). */
+/**
+ * Domain tag prepended to the signed bytes. Separates passport signatures from
+ * any other `signBytes` use of the owner key (defence against cross-context
+ * signature reuse), and binds the signature to the passport's network.
+ */
+const PASSPORT_DOMAIN = 'OAA-PASSPORT-v1';
+
+/** Deterministic bytes for signing/verifying (domain-tagged, sorted-key JSON). */
 export function passportBytes(passport) {
-  return new TextEncoder().encode(canonical(passport));
+  const net = passport?.mandate?.network ?? '';
+  return new TextEncoder().encode(`${PASSPORT_DOMAIN}|${net}|${canonical(passport)}`);
 }
 
 /**
@@ -87,16 +95,30 @@ export async function signPassport(passport, ownerSigner) {
   if (String(ownerSigner.address) !== passport.owner) {
     throw new Error('ownerSigner.address does not match passport.owner');
   }
-  const sig = await ownerSigner.signBytes(passportBytes(passport));
+  // Pass a human-readable summary so wallet signers (Pera) can show the owner
+  // exactly what they are authorising. Signers that ignore the option (e.g.
+  // LocalOwnerSigner) are unaffected.
+  const m = passport.mandate || {};
+  const message =
+    `Activate OAA agent ${passport.agentAddress} on ${m.network} ` +
+    `(cap ${m.perTxMicroAlgos} µALGO/tx)`;
+  const sig = await ownerSigner.signBytes(passportBytes(passport), { message });
   return { passport, signer: passport.owner, signature: toB64(sig) };
 }
 
-/** Verify a signed passport: owner signature valid and not expired. */
-export function verifyPassport(signed, { now = Date.now() } = {}) {
+/**
+ * Verify a signed passport: owner signature valid, not expired, and — when the
+ * relying party passes `network` — issued for that network. Pass `network` (the
+ * chain you operate on) whenever you can: it stops a passport issued for another
+ * chain from being accepted on yours.
+ */
+export function verifyPassport(signed, { now = Date.now(), network } = {}) {
   try {
     const { passport, signature, signer } = signed || {};
     if (!passport || !signature) return { ok: false, reason: 'missing_fields' };
     if (signer !== passport.owner) return { ok: false, reason: 'signer_owner_mismatch' };
+    if (network && passport.mandate?.network !== network)
+      return { ok: false, reason: 'network_mismatch' };
     if (now > passport.expiresAt) return { ok: false, reason: 'passport_expired' };
     const ok = algosdk.verifyBytes(
       passportBytes(passport),

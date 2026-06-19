@@ -26,6 +26,17 @@ import algosdk from 'algosdk';
 
 const ZERO_ADDR = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
+/** Genesis hash (base64) per supported network — pins the LogicSig to a chain. */
+const GENESIS_HASHES = Object.freeze({
+  algorand: 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=', // MainNet
+  'algorand-testnet': 'SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=', // TestNet
+});
+
+// Algorand amounts are uint64 on-chain; JS Number is only exact to 2^53-1.
+// Reject anything larger so the JS validator/passport can never disagree with
+// the on-chain TEAL integer (which takes the full value).
+const MAX_UINT53 = Number.MAX_SAFE_INTEGER;
+
 let warnedAnyPayee = false;
 
 export function createMandate({
@@ -41,8 +52,20 @@ export function createMandate({
   if (!Number.isInteger(cap) || cap <= 0) {
     throw new Error('mandate.perTxMicroAlgos must be a positive integer (microAlgos)');
   }
+  if (cap > MAX_UINT53) {
+    throw new Error(
+      'mandate.perTxMicroAlgos exceeds the safe-integer range; use a value ≤ 2^53-1',
+    );
+  }
   if (!Number.isInteger(Number(expiryRound)) || Number(expiryRound) <= 0) {
     throw new Error('mandate.expiryRound must be a positive integer (a future round)');
+  }
+  if (Number(expiryRound) > MAX_UINT53) {
+    throw new Error('mandate.expiryRound exceeds the safe-integer range');
+  }
+  const feeCap = Number(maxFee);
+  if (!Number.isInteger(feeCap) || feeCap < 0 || feeCap > MAX_UINT53) {
+    throw new Error('mandate.maxFee must be a non-negative integer within safe range');
   }
   if (!['algorand', 'algorand-testnet'].includes(network)) {
     throw new Error("mandate.network must be 'algorand' or 'algorand-testnet'");
@@ -73,7 +96,7 @@ export function createMandate({
     allowlist: Object.freeze(payees.map(String)),
     anyPayee,
     expiryRound: Number(expiryRound),
-    maxFee: Number(maxFee),
+    maxFee: feeCap,
     network,
   });
 }
@@ -91,11 +114,20 @@ export function checkPayment(txn, mandate, currentRound) {
   if (t.groupSize != null && Number(t.groupSize) !== 1) return fail('grouped_txn_forbidden');
 
   const amount = Number(t.amount ?? 0);
-  if (!Number.isInteger(amount) || amount < 0) return fail('amount_invalid');
+  if (!Number.isInteger(amount) || amount < 0 || amount > MAX_UINT53)
+    return fail('amount_invalid');
   if (amount > mandate.perTxMicroAlgos) return fail('amount_exceeds_per_tx_cap');
 
   const fee = Number(t.fee ?? 0);
+  if (!Number.isInteger(fee) || fee < 0) return fail('fee_invalid');
   if (fee > mandate.maxFee) return fail('fee_exceeds_max');
+
+  // Network binding (mirrors `txn GenesisHash == <hash>`): when a genesis hash
+  // is supplied it must match the mandate's network.
+  if (t.genesisHash != null) {
+    const expected = GENESIS_HASHES[mandate.network];
+    if (norm(t.genesisHash) !== expected) return fail('genesis_hash_mismatch');
+  }
 
   const receiver = norm(t.receiver);
   if (!receiver) return fail('receiver_missing');
@@ -142,4 +174,4 @@ function fail(reason) {
   return { ok: false, reason };
 }
 
-export { ZERO_ADDR };
+export { ZERO_ADDR, GENESIS_HASHES };

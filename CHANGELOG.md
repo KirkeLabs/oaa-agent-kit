@@ -3,6 +3,53 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/);
 versioning: [SemVer](https://semver.org/).
 
+## [0.3.0] — 2026-06-19
+
+Second hardening pass after two adversarial red-team reviews (a Halborn-style
+smart-contract audit and a MiCA compliance review). **Behaviour change: agent
+addresses now differ by network — see below.**
+
+### Security (breaking)
+
+- **Network binding (Critical).** The mandate TEAL now bakes the network genesis
+  hash into the program as a constant, so the same mandate compiles to a
+  **different address on TestNet vs MainNet** (previously identical, enabling
+  cross-network address reuse / passport reuse). Agent addresses therefore change
+  in this release. `checkPayment`/`AgentAccount.pay` additionally refuse to build
+  a transaction whose genesis hash ≠ the mandate's network. NB: stateless TEAL
+  cannot read the genesis at runtime, so this binding is address-level +
+  SDK-level, not consensus-level — see docs/SECURITY.md "Network binding". Also:
+  `verifyPassport({ network })` rejects a passport issued for another network.
+  `GENESIS_HASHES` is exported.
+- **uint64 safety.** `createMandate` rejects `perTxMicroAlgos`/`expiryRound`/
+  `maxFee` above 2^53-1, and `checkPayment` rejects non-integer/oversized
+  amounts and fees — so the JS validator and signed passport can never diverge
+  from the on-chain uint64.
+
+### Added
+
+- **`verifyPaymentProof(proof, onchain, expected)`** — merchant-side helper that
+  validates an x402 proof against the confirmed on-chain transaction (receiver,
+  amount, note==nonce, confirmation, network). A bare `{txid,nonce}` proof is not
+  self-authenticating.
+- **`createAgent({ maxSpendMicroAlgos })`** — aggregate/velocity spend cap across
+  an agent run (defence in depth, especially under `allowlist:'ANY'`); the agent
+  exposes a `spent` accessor.
+- **Passport hardening:** signed bytes are now domain-tagged (`OAA-PASSPORT-v1|
+  <network>|…`) to prevent cross-context signature reuse; `verifyPassport` accepts
+  an expected `network` and rejects mismatches; wallet signers receive a
+  human-readable summary of what they're authorising (`passportSignMessage`).
+- **`LEGAL.md`** — non-CASP / no-token-offering / Travel-Rule / AML & acceptable-use
+  / jurisdiction notices; shipped in the package.
+
+### Changed
+
+- The x402 passport header is sent **only on the paid retry**, not the unpaid
+  probe (less owner/agent metadata disclosure).
+- Docs: removed absolute safety claims ("never", "cannot break", "bulletproof");
+  added a Risk warning and an honest "limits of the safety model"; the flagship
+  example uses the owner-only default. 38 tests (was 31).
+
 ## [0.2.0] — 2026-06-19
 
 Security-hardening release following an independent audit. **Contains a

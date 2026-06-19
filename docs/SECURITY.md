@@ -32,6 +32,25 @@ For every payment from the agent account:
 _before_ it is ever submitted — defence in depth, but the chain is the
 authority.
 
+### Network binding (important caveat)
+
+A stateless LogicSig **cannot read the chain genesis at runtime** — there is no
+`txn`/`global GenesisHash` field in the AVM. We therefore cannot make the TEAL
+itself reject a wrong-network transaction. Instead:
+
+- the network's genesis hash is **baked into the program as a constant**, so the
+  same mandate compiles to a **different address on TestNet vs MainNet** (this
+  removes the accidental-address-collision footgun); and
+- `checkPayment` (and thus `AgentAccount.pay`) **refuses to build/submit** a
+  transaction whose genesis hash does not match the mandate's network
+  (`genesis_hash_mismatch`).
+
+Residual risk: because the program cannot enforce the genesis on-chain, a party
+who **bypasses this SDK** could still spend an agent address that was funded on a
+network other than the one its mandate was generated for. **Mitigation: never
+fund an agent address on a network it was not generated for**, and derive the
+address per-network via the SDK rather than copying it between chains.
+
 ## Payee policy: owner-only by default
 
 The payee check is **always** emitted. The default (empty allowlist) compiles to
@@ -76,14 +95,21 @@ sweep remaining funds back to the owner.
 ## Known limitations
 
 - **Aggregate/recurring budgets** need stateful logic (an app) — stateless
-  LogicSigs reason per-transaction. v1 approximates the aggregate budget with
-  the funded balance. A stateful "allowance app" is on the roadmap.
-- **Replay across services**: payment nonces are bound by the _merchant_ (the
-  402 issuer); this kit places the nonce in the tx note so a payment matches the
-  challenge it was made for.
+  LogicSigs reason per-transaction. The funded balance is the on-chain aggregate
+  ceiling; for a tighter per-run limit (especially under `'ANY'`) use
+  `createAgent({ maxSpendMicroAlgos })`, which caps cumulative spend in the SDK.
+  A stateful "allowance app" is on the roadmap.
+- **Payment proofs must be verified on-chain.** The x402 proof is
+  `{network, txid, nonce}`; a merchant MUST confirm the on-chain transaction
+  (receiver, amount, note==nonce, confirmed, genesis) before releasing a
+  resource — see `verifyPaymentProof`. A bare proof is not self-authenticating.
 - **TEAL is generated, not formally verified.** Review `renderMandateTeal`
   output and test on TestNet before mainnet. Independent audit recommended
-  before handling material value.
+  before handling material value. Re-audit on any AVM/`#pragma` change.
+- **Compilation trust.** `compileMandate` trusts the configured `algod` node to
+  return the program for the address you fund. Verify the agent address out of
+  band (e.g. compare `mandateAddress` from two independent nodes) before funding
+  material value.
 
 ## Reporting
 

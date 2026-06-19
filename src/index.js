@@ -15,10 +15,16 @@
 
 import algosdk from 'algosdk';
 
-export { createMandate, checkPayment, remainingBudget, ZERO_ADDR } from './mandate.js';
+export {
+  createMandate,
+  checkPayment,
+  remainingBudget,
+  ZERO_ADDR,
+  GENESIS_HASHES,
+} from './mandate.js';
 export { renderMandateTeal, compileMandate, mandateAddress } from './logicsig.js';
 export { AgentAccount } from './agentAccount.js';
-export { payAndFetch, makeAlgorandPayer } from './x402.js';
+export { payAndFetch, makeAlgorandPayer, verifyPaymentProof } from './x402.js';
 export { createAgent } from './agent.js';
 export {
   buildPassport,
@@ -32,6 +38,7 @@ export {
   LocalOwnerSigner,
   PeraConnector,
   peraSignDataPayload,
+  passportSignMessage,
   fundAgent,
 } from './peraConnector.js';
 

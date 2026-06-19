@@ -61,6 +61,13 @@ test('signBytes/verifyBytes round-trip via algosdk', async () => {
   assert.equal(algosdk.verifyBytes(msg, sig, owner.address), true);
 });
 
+test('verifyPassport rejects a passport issued for another network', async () => {
+  const { owner, passport } = setup(); // testnet mandate
+  const signed = await signPassport(passport, owner);
+  assert.equal(verifyPassport(signed, { network: 'algorand-testnet' }).ok, true);
+  assert.equal(verifyPassport(signed, { network: 'algorand' }).reason, 'network_mismatch');
+});
+
 test('buildPassport rejects an owner that does not match the mandate', () => {
   const { agentAddress, mandate } = setup();
   const otherOwner = String(algosdk.generateAccount().addr);

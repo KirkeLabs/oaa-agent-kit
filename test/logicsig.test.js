@@ -54,6 +54,19 @@ test("allowlist:'ANY' omits the receiver constraint (permissionless opt-in)", ()
   assert.doesNotMatch(teal, /txn Receiver/);
 });
 
+test('TEAL bakes in the network genesis hash (network-specific address)', () => {
+  const testnet = renderMandateTeal(
+    createMandate({ owner, perTxMicroAlgos: 10, expiryRound: 10, network: 'algorand-testnet' }),
+  );
+  const mainnet = renderMandateTeal(
+    createMandate({ owner, perTxMicroAlgos: 10, expiryRound: 10, network: 'algorand' }),
+  );
+  assert.match(testnet, /byte b64 \S+\npop/); // genesis constant baked in
+  assert.match(mainnet, /byte b64 \S+\npop/);
+  // Different networks => different genesis bytes => different program => address.
+  assert.notEqual(testnet, mainnet);
+});
+
 test('TEAL is deterministic for a given mandate', () => {
   const m = createMandate({
     owner,

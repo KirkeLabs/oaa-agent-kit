@@ -115,6 +115,26 @@ test('rejects a grouped transaction', () => {
   assert.equal(r.reason, 'grouped_txn_forbidden');
 });
 
+test('rejects unsafe (> 2^53-1) uint64 mandate values', () => {
+  assert.throws(
+    () => createMandate({ owner, perTxMicroAlgos: 2 ** 53 + 2, expiryRound: 10 }),
+    /safe-integer/,
+  );
+});
+
+test('rejects a non-integer fee', () => {
+  const r = checkPayment({ amount: 1, receiver: payee, fee: 'abc' }, base());
+  assert.equal(r.reason, 'fee_invalid');
+});
+
+test('rejects a genesis-hash mismatch (wrong network)', () => {
+  const r = checkPayment(
+    { amount: 1, receiver: payee, genesisHash: 'not-the-testnet-hash' },
+    base(),
+  );
+  assert.equal(r.reason, 'genesis_hash_mismatch');
+});
+
 test('closing remainder back to owner is allowed', () => {
   const r = checkPayment({ amount: 1, receiver: payee, closeRemainderTo: owner }, base());
   assert.equal(r.ok, true);

@@ -135,11 +135,15 @@ Picture three buckets of money:
 1. **You fund the agent's address.** Whatever you send is the agent's **entire budget**. Full stop. It has no other money and no way to reach yours.
 2. **The agent spends within the mandate.** Three rules ride along with every payment:
    - **Per-transaction cap** — the most it can pay in a *single* payment (e.g. 1 ALGO).
-   - **Allowlist** — the *only* addresses it may pay (leave empty to allow any payee, or list specific ones to lock it down). It can always send leftovers back to you.
+   - **Allowlist** — the *only* addresses it may pay. **Safe default: leave it empty and the agent can pay *only you*, the owner** — funds can never be redirected to a stranger. List specific service addresses to let it pay them. (To let it pay *any* address — e.g. arbitrary pay-as-you-go services whose address you don't know in advance — you must explicitly set `allowlist: 'ANY'`, which turns the agent into a *permissionless* spend account. See ["A note on `'ANY'`"](#a-note-on-paying-any-address) before you do.)
    - **Expiry** — a future point after which it can't pay at all.
 3. **Leftovers come home.** Any unspent balance can only ever be swept **back to you, the owner** — never to a stranger.
 
 **Worked example.** You set the per-transaction cap to **1 ALGO** and fund the agent with **5 ALGO**. The agent can then make **at most five payments of 1 ALGO or less** to approved addresses before it simply runs out of money. It can't make a single 2-ALGO payment (over the cap → rejected). It can't pay an address you didn't approve (→ rejected). After the expiry date, it can't pay at all. The worst case is that all 5 test ALGO get spent on approved services — and not one microALGO more.
+
+### A note on paying *any* address
+
+The agent account is a **stateless smart contract** (LogicSig): its rules are public and enforced by the network, but so is the account itself. With a payee allowlist (or the owner-only default), that's exactly what you want — only approved destinations are reachable. But if you set `allowlist: 'ANY'` to let the agent pay arbitrary services, you remove the destination check entirely, which means **anyone** who sees the agent's published rules could also direct its balance (in cap-sized amounts, up to the funded total) to an address of their choosing. Your per-tx cap, expiry, and "leftovers only return to the owner" rules still hold — so your total exposure is still only what you funded — but the funds could go to someone other than you. **Use `'ANY'` only with small caps and short expiries, and prefer listing specific service addresses whenever you can.**
 
 ---
 
@@ -239,7 +243,10 @@ const sp = await algod.getTransactionParams().do();
 const mandate = createMandate({
   owner: owner.address,
   perTxMicroAlgos: 1_000_000, // ≤ 1 ALGO per payment
-  allowlist: [], // [] = any payee; or restrict
+  // [] = OWNER-ONLY (safe default) · ['ADDR',…] = allow those services ·
+  // 'ANY' = pay anyone (permissionless — see SECURITY.md). This demo pays an
+  // arbitrary service, so it opts in to 'ANY':
+  allowlist: 'ANY',
   expiryRound: Number(sp.lastValid) + 1_000_000,
   network: 'algorand-testnet',
 });
@@ -291,15 +298,15 @@ console.log(await agent.run('buy one report'));
 | Export | Purpose |
 |--------|---------|
 | `getAlgod(opts)` | An `Algodv2` client for a public node (TestNet by default). |
-| `createMandate(opts)` | Build a frozen, validated mandate object. |
+| `createMandate(opts)` | Build a frozen, validated mandate object. `allowlist` is an address array (empty ⇒ owner-only) or `'ANY'` (permissionless opt-in). |
 | `checkPayment(txn, mandate, currentRound?)` | Pure JS validator mirroring the on-chain TEAL. |
 | `remainingBudget(mandate, balance)` | Spendable budget (balance minus min-balance). |
 | `renderMandateTeal` / `compileMandate` / `mandateAddress` | TEAL source, compiled program, agent address. |
 | `AgentAccount` | The LogicSig account; `AgentAccount.create({algod, mandate})`, `.address`, `.pay(...)`. |
 | `payAndFetch(url, opts)` / `makeAlgorandPayer(opts)` | The x402 agent-side handshake and on-chain payer. |
 | `createAgent(opts)` | The brain-pluggable agent loop with a built-in `pay` tool. |
-| `buildPassport` / `signPassport` / `verifyPassport` / `passportBytes` / `PASSPORT_SCHEMA` | OAA passport (agent identity). |
-| `LocalOwnerSigner` / `PeraConnector` / `fundAgent` | Owner signers (Node + browser) and the funding helper. |
+| `buildPassport` / `signPassport` / `verifyPassport` / `verifyPassportAddress` / `passportBytes` / `PASSPORT_SCHEMA` | OAA passport (agent identity). `verifyPassportAddress` confirms the stated address matches the mandate on-chain. |
+| `LocalOwnerSigner` / `PeraConnector` / `peraSignDataPayload` / `fundAgent` | Owner signers (Node + browser) and the funding helper. |
 
 ## Pera Wallet
 

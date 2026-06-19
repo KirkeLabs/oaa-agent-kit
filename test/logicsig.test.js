@@ -25,10 +25,11 @@ test('TEAL encodes the mandate constraints', () => {
   assert.match(teal, new RegExp(`addr ${payee}`)); // allowlisted payee
   assert.match(teal, /txn RekeyTo\nglobal ZeroAddress\n==/); // rekey guard
   assert.match(teal, /txn CloseRemainderTo/); // close guard
+  assert.match(teal, /global GroupSize\nint 1\n==/); // single-tx guard
   assert.match(teal, /\|\|/); // allowlist OR chain / close OR owner
 });
 
-test('empty allowlist omits the receiver constraint', () => {
+test('empty allowlist constrains the receiver to the OWNER (owner-only)', () => {
   const m = createMandate({
     owner,
     perTxMicroAlgos: 10,
@@ -36,6 +37,20 @@ test('empty allowlist omits the receiver constraint', () => {
     network: 'algorand-testnet',
   });
   const teal = renderMandateTeal(m);
+  assert.match(teal, /txn Receiver/); // receiver IS constrained
+  assert.match(teal, new RegExp(`txn Receiver\\naddr ${owner}\\n==`)); // == owner
+});
+
+test("allowlist:'ANY' omits the receiver constraint (permissionless opt-in)", () => {
+  const m = createMandate({
+    owner,
+    perTxMicroAlgos: 10,
+    allowlist: 'ANY',
+    expiryRound: 10,
+    network: 'algorand-testnet',
+  });
+  const teal = renderMandateTeal(m);
+  assert.equal(m.anyPayee, true);
   assert.doesNotMatch(teal, /txn Receiver/);
 });
 

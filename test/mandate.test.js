@@ -83,14 +83,36 @@ test('rejects rekey, hostile close, expiry, fee, and non-pay', () => {
   );
 });
 
-test('empty allowlist permits any receiver', () => {
+test('empty allowlist is OWNER-ONLY (rejects a stranger)', () => {
   const m = createMandate({
     owner,
     perTxMicroAlgos: 10,
     expiryRound: 10,
     network: 'algorand-testnet',
   });
+  assert.equal(m.anyPayee, false);
+  assert.equal(checkPayment({ amount: 5, receiver: owner }, m).ok, true);
+  assert.equal(
+    checkPayment({ amount: 5, receiver: stranger }, m).reason,
+    'receiver_not_allowlisted',
+  );
+});
+
+test("allowlist:'ANY' permits any receiver (explicit opt-in)", () => {
+  const m = createMandate({
+    owner,
+    perTxMicroAlgos: 10,
+    allowlist: 'ANY',
+    expiryRound: 10,
+    network: 'algorand-testnet',
+  });
+  assert.equal(m.anyPayee, true);
   assert.equal(checkPayment({ amount: 5, receiver: stranger }, m).ok, true);
+});
+
+test('rejects a grouped transaction', () => {
+  const r = checkPayment({ amount: 1, receiver: payee, groupSize: 2 }, base());
+  assert.equal(r.reason, 'grouped_txn_forbidden');
 });
 
 test('closing remainder back to owner is allowed', () => {

@@ -49,10 +49,21 @@ export class LocalOwnerSigner {
  *
  * Requires `@perawallet/connect` installed in the host app.
  */
+/**
+ * Build the ARC-60 `signData` payload for a passport. Pera expects `data` to be
+ * the RAW bytes (a Uint8Array), which it base64-encodes and MX-prefixes before
+ * signing with the same scheme as `algosdk.signBytes` — so the result verifies
+ * under `algosdk.verifyBytes` over the same raw bytes. Passing an already-base64
+ * string here would double-encode and break `verifyPassport`.
+ */
+export function peraSignDataPayload(bytes, message = 'Activate OAA agent') {
+  return [{ data: Buffer.from(bytes), message }];
+}
+
 export class PeraConnector {
-  constructor({ chainId } = {}) {
+  constructor({ chainId, _client } = {}) {
     this._chainId = chainId; // 416001 mainnet, 416002 testnet
-    this._pera = null;
+    this._pera = _client || null; // allow injection for testing
     this.address = null;
   }
   async _client() {
@@ -93,10 +104,7 @@ export class PeraConnector {
         'This Pera version lacks signData; update @perawallet/connect to sign passports.',
       );
     }
-    const out = await pera.signData(
-      [{ data: Buffer.from(bytes).toString('base64'), message: 'Activate OAA agent' }],
-      this.address,
-    );
+    const out = await pera.signData(peraSignDataPayload(bytes), this.address);
     const sig = out[0];
     return sig instanceof Uint8Array ? sig : new Uint8Array(Buffer.from(sig, 'base64'));
   }

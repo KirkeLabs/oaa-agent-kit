@@ -60,3 +60,24 @@ test('signBytes/verifyBytes round-trip via algosdk', async () => {
   const sig = await owner.signBytes(msg);
   assert.equal(algosdk.verifyBytes(msg, sig, owner.address), true);
 });
+
+test('buildPassport rejects an owner that does not match the mandate', () => {
+  const { agentAddress, mandate } = setup();
+  const otherOwner = String(algosdk.generateAccount().addr);
+  assert.throws(
+    () => buildPassport({ agentAddress, owner: otherOwner, mandate }),
+    /owner does not match mandate/,
+  );
+});
+
+test('buildPassport derives address+mandate from an account (consistent)', async () => {
+  const { owner, agentAddress, mandate } = setup();
+  // Minimal AgentAccount-shaped object: { address, mandate }.
+  const account = { address: agentAddress, mandate };
+  const passport = buildPassport({ account, owner: owner.address });
+  assert.equal(passport.agentAddress, agentAddress);
+  assert.equal(passport.mandate.owner, owner.address);
+  assert.equal(passport.mandate.anyPayee, false);
+  const signed = await signPassport(passport, owner);
+  assert.equal(verifyPassport(signed).ok, true);
+});

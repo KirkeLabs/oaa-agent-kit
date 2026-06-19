@@ -6,10 +6,17 @@
  * A mandate is deliberately narrow. An agent funded under a mandate can ONLY:
  *   - send `pay` transactions (no asset/app/key-reg/rekey games),
  *   - up to `perTxMicroAlgos` per transaction,
- *   - to an address on `allowlist` (or back to the owner),
+ *   - to an address on `allowlist` (or back to the owner) — and with an EMPTY
+ *     allowlist, ONLY back to the owner (safe by default),
  *   - with fee ≤ `maxFee`,
  *   - before `expiryRound`,
+ *   - in a single (non-grouped) transaction,
  *   - never rekeying, and only ever closing remainder back to the owner.
+ *
+ * `allowlist: 'ANY'` is an explicit, deliberately loud opt-in that removes the
+ * payee restriction entirely — the agent account becomes a PERMISSIONLESS
+ * spend account (anyone holding the LogicSig program can direct ≤cap payments
+ * to any address). Only use it when you understand that property.
  *
  * The aggregate budget is simply how much the owner funds the agent account
  * with: you can never lose more than you funded, and leftovers return to you.
@@ -18,6 +25,8 @@
 import algosdk from 'algosdk';
 
 const ZERO_ADDR = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+let warnedAnyPayee = false;
 
 export function createMandate({
   owner,
@@ -35,17 +44,34 @@ export function createMandate({
   if (!Number.isInteger(Number(expiryRound)) || Number(expiryRound) <= 0) {
     throw new Error('mandate.expiryRound must be a positive integer (a future round)');
   }
-  for (const a of allowlist) {
-    if (!isAddr(a))
-      throw new Error(`mandate.allowlist contains an invalid address: ${a}`);
-  }
   if (!['algorand', 'algorand-testnet'].includes(network)) {
     throw new Error("mandate.network must be 'algorand' or 'algorand-testnet'");
   }
+
+  // Payee policy. Default ([]) = owner-only (safe). An explicit 'ANY' opt-in
+  // removes the payee restriction and makes the account permissionless.
+  const anyPayee = allowlist === 'ANY';
+  const payees = anyPayee ? [] : allowlist;
+  if (!anyPayee && !Array.isArray(payees)) {
+    throw new Error("mandate.allowlist must be an array of addresses or the string 'ANY'");
+  }
+  for (const a of payees) {
+    if (!isAddr(a))
+      throw new Error(`mandate.allowlist contains an invalid address: ${a}`);
+  }
+  if (anyPayee && !warnedAnyPayee) {
+    warnedAnyPayee = true;
+    console.warn(
+      "⚠ oaa-agent-kit: allowlist:'ANY' creates a PERMISSIONLESS spend account — " +
+        'any address may receive ≤cap payments from it. Prefer an explicit payee list.',
+    );
+  }
+
   return Object.freeze({
     owner: String(owner),
     perTxMicroAlgos: cap,
-    allowlist: Object.freeze(allowlist.map(String)),
+    allowlist: Object.freeze(payees.map(String)),
+    anyPayee,
     expiryRound: Number(expiryRound),
     maxFee: Number(maxFee),
     network,
@@ -61,6 +87,9 @@ export function checkPayment(txn, mandate, currentRound) {
   const type = t.type || 'pay';
   if (type !== 'pay') return fail('type_not_pay');
 
+  // Single, non-grouped transaction only (mirrors `global GroupSize == 1`).
+  if (t.groupSize != null && Number(t.groupSize) !== 1) return fail('grouped_txn_forbidden');
+
   const amount = Number(t.amount ?? 0);
   if (!Number.isInteger(amount) || amount < 0) return fail('amount_invalid');
   if (amount > mandate.perTxMicroAlgos) return fail('amount_exceeds_per_tx_cap');
@@ -70,8 +99,14 @@ export function checkPayment(txn, mandate, currentRound) {
 
   const receiver = norm(t.receiver);
   if (!receiver) return fail('receiver_missing');
-  const allowed = mandate.allowlist.length === 0 || mandate.allowlist.includes(receiver);
-  if (!allowed && receiver !== mandate.owner) return fail('receiver_not_allowlisted');
+  // Payee policy: 'ANY' permits any receiver; otherwise the receiver must be
+  // the owner or on the allowlist. An EMPTY allowlist therefore means
+  // owner-only — funds can never be redirected to a stranger.
+  const allowed =
+    mandate.anyPayee ||
+    receiver === mandate.owner ||
+    mandate.allowlist.includes(receiver);
+  if (!allowed) return fail('receiver_not_allowlisted');
 
   if (t.rekeyTo && norm(t.rekeyTo) !== ZERO_ADDR) return fail('rekey_forbidden');
 

@@ -25,6 +25,12 @@ export function renderMandateTeal(mandate) {
   L.push('int pay');
   L.push('==');
 
+  // single, non-grouped transaction (no group-bundling games)
+  L.push('global GroupSize');
+  L.push('int 1');
+  L.push('==');
+  L.push('&&');
+
   // amount <= perTxMicroAlgos
   L.push('txn Amount');
   L.push(`int ${mandate.perTxMicroAlgos}`);
@@ -59,9 +65,11 @@ export function renderMandateTeal(mandate) {
   L.push('||');
   L.push('&&');
 
-  // receiver allowed: in allowlist OR owner (if allowlist empty, any receiver)
-  if (mandate.allowlist.length > 0) {
-    const payees = [...mandate.allowlist, mandate.owner];
+  // receiver allowed: owner ∪ allowlist. With an EMPTY allowlist this reduces
+  // to "receiver == owner" (owner-only, the safe default). The payee clause is
+  // omitted ONLY for an explicit `allowlist: 'ANY'` opt-in (permissionless).
+  if (!mandate.anyPayee) {
+    const payees = [mandate.owner, ...mandate.allowlist];
     payees.forEach((addr, i) => {
       L.push('txn Receiver');
       L.push(`addr ${addr}`);

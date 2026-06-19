@@ -9,20 +9,31 @@
  */
 
 import algosdk from 'algosdk';
+import { mandateAddress } from './logicsig.js';
 
 export const PASSPORT_SCHEMA = 'https://openagentaccess.org/schema/agent-passport/v1';
 
+/**
+ * Build a passport. Prefer passing the `account` (an AgentAccount) so the
+ * `agentAddress` and `mandate` are guaranteed to belong together; passing them
+ * separately is supported but the caller is then responsible for consistency
+ * (use `verifyPassportAddress` to check it on-chain).
+ */
 export function buildPassport({
-  agentAddress,
+  account,
+  agentAddress = account?.address,
   owner,
-  mandate,
+  mandate = account?.mandate,
   purpose = 'general',
   issuedAt = Date.now(),
   expiresAt,
 }) {
+  if (!mandate) throw new Error('buildPassport requires a mandate (or an account)');
   if (!algosdk.isValidAddress(String(agentAddress)))
     throw new Error('agentAddress is invalid');
   if (!algosdk.isValidAddress(String(owner))) throw new Error('owner is invalid');
+  if (String(owner) !== String(mandate.owner))
+    throw new Error('passport owner does not match mandate.owner');
   const exp = expiresAt ?? issuedAt + 24 * 60 * 60 * 1000;
   return {
     schema: PASSPORT_SCHEMA,
@@ -32,13 +43,35 @@ export function buildPassport({
     issuedAt,
     expiresAt: exp,
     mandate: {
+      owner: mandate.owner,
       perTxMicroAlgos: mandate.perTxMicroAlgos,
       allowlist: [...mandate.allowlist],
+      anyPayee: !!mandate.anyPayee,
       expiryRound: mandate.expiryRound,
       maxFee: mandate.maxFee,
       network: mandate.network,
     },
   };
+}
+
+/**
+ * On-chain binding check for relying parties: recompute the LogicSig address
+ * from the passport's mandate and confirm it equals `passport.agentAddress`.
+ * Async (needs algod to compile). Use alongside `verifyPassport` when you must
+ * trust that the stated address truly corresponds to the stated mandate.
+ */
+export async function verifyPassportAddress(signed, algod) {
+  try {
+    const { passport } = signed || {};
+    if (!passport?.mandate || !passport?.agentAddress)
+      return { ok: false, reason: 'missing_fields' };
+    const derived = String(await mandateAddress(algod, passport.mandate));
+    return derived === String(passport.agentAddress)
+      ? { ok: true }
+      : { ok: false, reason: 'address_mandate_mismatch' };
+  } catch (e) {
+    return { ok: false, reason: `verify_error:${e.message}` };
+  }
 }
 
 /** Deterministic bytes for signing/verifying (stable, sorted-key JSON). */

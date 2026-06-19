@@ -17,28 +17,51 @@ transactions the LogicSig already permits.
 
 For every payment from the agent account:
 
-| Rule                                 | TEAL check                       |
-| ------------------------------------ | -------------------------------- | --- | --------- |
-| Payments only (no asset/app/key-reg) | `TypeEnum == pay`                |
-| Per-transaction cap                  | `Amount <= perTxMicroAlgos`      |
-| Fee cap (no fee-drain)               | `Fee <= maxFee`                  |
-| Expiry                               | `LastValid <= expiryRound`       |
-| No self-rekey (no authority escape)  | `RekeyTo == ZeroAddress`         |
-| No hostile close                     | `CloseRemainderTo == ZeroAddress |     | == owner` |
-| Payee allowlist (if set)             | `Receiver ∈ allowlist ∪ {owner}` |
+| Rule                                 | TEAL check                                     |
+| ------------------------------------ | ---------------------------------------------- |
+| Payments only (no asset/app/key-reg) | `TypeEnum == pay`                              |
+| Single, non-grouped transaction      | `GroupSize == 1`                               |
+| Per-transaction cap                  | `Amount <= perTxMicroAlgos`                    |
+| Fee cap (no fee-drain)               | `Fee <= maxFee`                                |
+| Expiry                               | `LastValid <= expiryRound`                     |
+| No self-rekey (no authority escape)  | `RekeyTo == ZeroAddress`                       |
+| No hostile close                     | `CloseRemainderTo == ZeroAddress \|\| == owner`|
+| Payee policy (always enforced)       | `Receiver ∈ {owner} ∪ allowlist`               |
 
 `src/mandate.js#checkPayment` mirrors these in JS so the SDK refuses a bad spend
 _before_ it is ever submitted — defence in depth, but the chain is the
 authority.
 
+## Payee policy: owner-only by default
+
+The payee check is **always** emitted. The default (empty allowlist) compiles to
+`Receiver == owner` — the agent can spend **only back to the owner**. Adding
+addresses widens the set to `{owner} ∪ allowlist`. There is **no** "open by
+default": redirecting funds to a stranger is rejected by consensus unless you
+opt in.
+
+### `allowlist: 'ANY'` — explicit, permissionless mode
+
+Some agents must pay services whose address isn't known ahead of time (e.g. an
+x402 endpoint that names its `payTo` at request time). `allowlist: 'ANY'` omits
+the receiver clause entirely. **This makes the account permissionless:** because
+a stateless LogicSig is authorised by its (public, deterministic, on-chain-once-
+spent) program, *anyone* who has that program can direct the balance — in
+cap-sized payments, up to the funded total — to any address. The cap, fee,
+expiry, rekey, close-to-owner, and single-tx rules still hold, so total exposure
+is still bounded by the funded balance, but the funds may reach a third party.
+Use `'ANY'` only with small caps and short expiries; prefer an explicit payee
+list. `createMandate` emits a runtime warning when `'ANY'` is used.
+
 ## Budget = funded balance
 
 There is no hidden credit. The agent's spending power is exactly the ALGO you
 send its address, minus the 0.1 ALGO min-balance. Worst case (a totally rogue
-agent) it spends that balance **in cap-sized payments to allowlisted payees, or
-returns it to you** — it cannot exceed it, cannot reach a non-allowlisted payee,
-and cannot escape via rekey/close. To "revoke," stop funding it and/or let the
-expiry round pass; sweep remaining funds back to the owner.
+agent, or — under `'ANY'` — a third party) it spends that balance **in cap-sized
+payments to the allowed payees, or returns it to the owner** — it cannot exceed
+the funded balance, cannot reach a payee outside the policy, and cannot escape
+via rekey/close. To "revoke," stop funding it and/or let the expiry round pass;
+sweep remaining funds back to the owner.
 
 ## Trust boundaries / responsibilities
 

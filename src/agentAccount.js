@@ -30,27 +30,39 @@ export class AgentAccount {
    * MandateViolation before anything touches the network.
    */
   buildPayment({ to, microAlgos, note, suggestedParams }) {
+    // Cap lastValid at the mandate expiry so a valid pre-check can never submit
+    // a txn the chain will reject for expiry, and pin the real fee + current
+    // round so the JS pre-check matches what the LogicSig will actually see.
+    const fee = Number(suggestedParams.fee || suggestedParams.minFee || 1000);
+    const currentRound = Number(suggestedParams.firstValid);
+    const lastValid = Math.min(
+      Number(suggestedParams.lastValid),
+      this.mandate.expiryRound,
+    );
     const check = checkPayment(
       {
         type: 'pay',
         amount: Number(microAlgos),
-        fee: Number(suggestedParams.fee || suggestedParams.minFee || 1000),
+        fee,
         receiver: String(to),
-        lastValid: Number(suggestedParams.lastValid),
+        lastValid,
+        groupSize: 1,
       },
       this.mandate,
+      currentRound,
     );
     if (!check.ok) {
       const err = new Error(`MandateViolation: ${check.reason}`);
       err.code = check.reason;
       throw err;
     }
+    const params = { ...suggestedParams, lastValid };
     return algosdk.makePaymentTxnWithSuggestedParamsFromObject({
       sender: this.address,
       receiver: String(to),
       amount: Number(microAlgos),
       note: note ? new TextEncoder().encode(String(note)) : undefined,
-      suggestedParams,
+      suggestedParams: params,
     });
   }
 

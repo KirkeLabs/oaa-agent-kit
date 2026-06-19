@@ -24,10 +24,16 @@ export {
   buildPassport,
   signPassport,
   verifyPassport,
+  verifyPassportAddress,
   passportBytes,
   PASSPORT_SCHEMA,
 } from './passport.js';
-export { LocalOwnerSigner, PeraConnector, fundAgent } from './peraConnector.js';
+export {
+  LocalOwnerSigner,
+  PeraConnector,
+  peraSignDataPayload,
+  fundAgent,
+} from './peraConnector.js';
 
 /** Convenience: an Algod client for a public node. */
 export function getAlgod({

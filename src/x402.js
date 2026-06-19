@@ -13,10 +13,31 @@
 
 import { checkPayment } from './mandate.js';
 
+/** True for https URLs, or http on localhost/loopback (dev/testing only). */
+function isSecureUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol === 'https:') return true;
+    return (
+      u.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '[::1]', '::1'].includes(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function payAndFetch(
   url,
-  { payer, fetchImpl = fetch, method = 'POST', body, passport } = {},
+  { payer, fetchImpl = fetch, method = 'POST', body, passport, allowInsecure = false } = {},
 ) {
+  // A 402 flow exchanges payment proofs over the wire; require TLS unless the
+  // caller is explicitly testing against localhost (or opts in to insecure).
+  if (payer && !allowInsecure && !isSecureUrl(url)) {
+    throw new Error(
+      `payAndFetch refuses a non-https payment endpoint: ${url} (pass allowInsecure to override)`,
+    );
+  }
   const headers = { 'content-type': 'application/json' };
   if (passport)
     headers['x-agent-passport'] = Buffer.from(JSON.stringify(passport)).toString(
@@ -70,9 +91,24 @@ export async function payAndFetch(
  */
 export function makeAlgorandPayer({ algod, account, mandate }) {
   return async (req) => {
+    // Bind the payment to the mandate's network — never settle a 402 that asks
+    // to be paid on a different chain than the agent operates on.
+    if (req.network && req.network !== mandate.network) {
+      throw new Error(
+        `Refusing 402: network mismatch (req ${req.network} ≠ mandate ${mandate.network})`,
+      );
+    }
+    // The nonce becomes the on-chain note (≤ 1KB on Algorand); reject anything
+    // oversized or non-string before it reaches transaction construction.
+    const nonce = req.nonce == null ? undefined : String(req.nonce);
+    if (nonce && new TextEncoder().encode(nonce).length > 1024) {
+      throw new Error('Refusing 402: nonce too large for transaction note (>1KB)');
+    }
     const amount = Number(req.amount);
+    // Fast pre-check (amount/receiver/policy). The authoritative check against
+    // the real fee, current round, and expiry happens inside account.pay().
     const pre = checkPayment(
-      { type: 'pay', amount, receiver: req.payTo, fee: mandate.maxFee },
+      { type: 'pay', amount, receiver: req.payTo, groupSize: 1 },
       mandate,
     );
     if (!pre.ok)
@@ -81,7 +117,7 @@ export function makeAlgorandPayer({ algod, account, mandate }) {
       algod,
       to: req.payTo,
       microAlgos: amount,
-      note: req.nonce, // bind the on-chain payment to the challenge
+      note: nonce, // bind the on-chain payment to the challenge
     });
     return txid;
   };

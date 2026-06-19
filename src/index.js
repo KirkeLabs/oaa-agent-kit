@@ -22,7 +22,13 @@ export {
   ZERO_ADDR,
   GENESIS_HASHES,
 } from './mandate.js';
-export { renderMandateTeal, compileMandate, mandateAddress } from './logicsig.js';
+export {
+  renderMandateTeal,
+  compileMandate,
+  mandateAddress,
+  assertMandateProgram,
+  verifyMandateAddress,
+} from './logicsig.js';
 export { AgentAccount } from './agentAccount.js';
 export { payAndFetch, makeAlgorandPayer, verifyPaymentProof } from './x402.js';
 export { createAgent } from './agent.js';

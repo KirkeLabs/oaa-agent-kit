@@ -311,7 +311,8 @@ console.log(await agent.run('buy one report'));
 | `createMandate(opts)` | Build a frozen, validated mandate object. `allowlist` is an address array (empty ⇒ owner-only) or `'ANY'` (permissionless opt-in). |
 | `checkPayment(txn, mandate, currentRound?)` | Pure JS validator mirroring the on-chain TEAL. |
 | `remainingBudget(mandate, balance)` | Spendable budget (balance minus min-balance). |
-| `renderMandateTeal` / `compileMandate` / `mandateAddress` | TEAL source, compiled program, agent address. |
+| `renderMandateTeal` / `compileMandate` / `mandateAddress` | TEAL source, compiled program (structurally verified by default), agent address. |
+| `assertMandateProgram(program, mandate)` / `verifyMandateAddress(mandate, [algodA, algodB])` | Trust-minimised compile checks — confirm the compiled program binds your owner/network, and that independent nodes agree on the address before you fund. |
 | `AgentAccount` | The LogicSig account; `AgentAccount.create({algod, mandate})`, `.address`, `.pay(...)`. |
 | `payAndFetch(url, opts)` / `makeAlgorandPayer(opts)` | The x402 agent-side handshake and on-chain payer. |
 | `createAgent(opts)` | The brain-pluggable agent loop with a built-in `pay` tool. |

@@ -106,10 +106,16 @@ sweep remaining funds back to the owner.
 - **TEAL is generated, not formally verified.** Review `renderMandateTeal`
   output and test on TestNet before mainnet. Independent audit recommended
   before handling material value. Re-audit on any AVM/`#pragma` change.
-- **Compilation trust.** `compileMandate` trusts the configured `algod` node to
-  return the program for the address you fund. Verify the agent address out of
-  band (e.g. compare `mandateAddress` from two independent nodes) before funding
-  material value.
+- **Compilation trust.** `compileMandate` asks a remote `algod` to compile the
+  TEAL, then derives the address **locally** from the returned bytes (never from
+  the node's claimed hash) and, by default, runs `assertMandateProgram` to
+  confirm the returned program is a v8 LogicSig that embeds this mandate's owner
+  key and network genesis hash — catching a substituted/weakened program. For
+  material value, additionally call `verifyMandateAddress(mandate, [algodA,
+  algodB])` to require **byte-identical** compilation from two or more
+  independent nodes before funding, so no single malicious/MITM'd node can
+  redirect you to the wrong address. (Full local assembly — trusting no node at
+  all — remains on the roadmap.)
 
 ## Reporting
 

@@ -3,6 +3,30 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/);
 versioning: [SemVer](https://semver.org/).
 
+## [0.4.0] — 2026-06-19
+
+Trust-minimised compile verification (roadmap item from the security review).
+
+### Added
+
+- **`assertMandateProgram(program, mandate)`** — local, no-network structural
+  check that a compiled program is a v8 LogicSig embedding this mandate's owner
+  key and network genesis hash. `compileMandate` now runs it **by default**
+  (pass `{ verify: false }` to skip) and the address is always derived locally
+  from the returned bytes, never from the node's claimed hash. Catches a
+  malicious/MITM'd `algod` returning a substituted/weakened program for the
+  address you are about to fund.
+- **`verifyMandateAddress(mandate, [algodA, algodB, …])`** — compiles on two or
+  more independent nodes and requires **byte-identical** programs (each passing
+  the structural check) before returning the address; use before funding
+  material value so no single node can redirect you.
+
+### Notes
+
+- Full local TEAL assembly (trusting no node at all) remains on the roadmap;
+  AVM has no readable genesis field, so network binding stays address-level +
+  SDK-level (see docs/SECURITY.md). 42 tests (was 38).
+
 ## [0.3.0] — 2026-06-19
 
 Second hardening pass after two adversarial red-team reviews (a Halborn-style

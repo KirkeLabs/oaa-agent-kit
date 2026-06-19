@@ -99,16 +99,67 @@ export function renderMandateTeal(mandate) {
   return L.join('\n') + '\n';
 }
 
+/** Find a byte subsequence; -1 if absent. */
+function indexOfBytes(haystack, needle) {
+  outer: for (let i = 0; i <= haystack.length - needle.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
 /**
- * Compile a mandate to a LogicSigAccount via algod. Network call.
+ * Trust-minimised structural check on a compiled program. `algod.compile` runs
+ * on a REMOTE node; a malicious/MITM'd node could return a different (weaker)
+ * program for the address you are about to fund. This verifies — locally, with
+ * no further network calls — that the returned program is a v8 LogicSig that
+ * actually embeds THIS mandate's owner key and network genesis hash. It does not
+ * prove full semantic equivalence (use `verifyMandateAddress` across independent
+ * nodes for that), but it catches a substituted program that doesn't bind your
+ * owner/network.
+ * @returns {{ok:true} | {ok:false, reason:string}}
+ */
+export function assertMandateProgram(program, mandate) {
+  const p = program instanceof Uint8Array ? program : new Uint8Array(program);
+  if (p.length === 0 || p[0] !== 8) return { ok: false, reason: 'not_v8_program' };
+  let ownerPk;
+  try {
+    ownerPk = algosdk.decodeAddress(String(mandate.owner)).publicKey;
+  } catch {
+    return { ok: false, reason: 'bad_owner' };
+  }
+  if (indexOfBytes(p, ownerPk) < 0) return { ok: false, reason: 'owner_not_in_program' };
+  const gh = GENESIS_HASHES[mandate.network];
+  if (!gh) return { ok: false, reason: 'unknown_network' };
+  const ghBytes = new Uint8Array(Buffer.from(gh, 'base64'));
+  if (indexOfBytes(p, ghBytes) < 0) return { ok: false, reason: 'genesis_not_in_program' };
+  return { ok: true };
+}
+
+/**
+ * Compile a mandate to a LogicSigAccount via algod. Network call. By default the
+ * returned program is structurally verified against the mandate (see
+ * `assertMandateProgram`); pass `{ verify: false }` to skip. The address is
+ * always derived locally from the returned bytes, never taken from the node.
  * @param {algosdk.Algodv2} algod
  * @param {object} mandate
+ * @param {{verify?: boolean}} [opts]
  * @returns {Promise<algosdk.LogicSigAccount>}
  */
-export async function compileMandate(algod, mandate) {
+export async function compileMandate(algod, mandate, { verify = true } = {}) {
   const teal = renderMandateTeal(mandate);
   const res = await algod.compile(teal).do();
   const program = new Uint8Array(Buffer.from(res.result, 'base64'));
+  if (verify) {
+    const check = assertMandateProgram(program, mandate);
+    if (!check.ok) {
+      const err = new Error(`MandateCompileError: ${check.reason}`);
+      err.code = check.reason;
+      throw err;
+    }
+  }
   return new algosdk.LogicSigAccount(program);
 }
 
@@ -116,6 +167,42 @@ export async function compileMandate(algod, mandate) {
 export async function mandateAddress(algod, mandate) {
   const lsa = await compileMandate(algod, mandate);
   return lsa.address();
+}
+
+/**
+ * Trust-minimised address derivation: compile the mandate on TWO OR MORE
+ * INDEPENDENT algod endpoints and confirm they return byte-identical programs
+ * (each also passing the structural check), so no single malicious/MITM'd node
+ * can make you fund the wrong address. Use this before funding material value.
+ * @param {object} mandate
+ * @param {algosdk.Algodv2[]} algods independent clients (≥2 recommended)
+ * @returns {Promise<{ok:true,address:string,sources:number} | {ok:false,reason:string}>}
+ */
+export async function verifyMandateAddress(mandate, algods) {
+  if (!Array.isArray(algods) || algods.length < 2)
+    return { ok: false, reason: 'need_at_least_two_independent_algods' };
+  const teal = renderMandateTeal(mandate);
+  let firstHex = null;
+  let address = null;
+  for (const algod of algods) {
+    let program;
+    try {
+      const res = await algod.compile(teal).do();
+      program = new Uint8Array(Buffer.from(res.result, 'base64'));
+    } catch (e) {
+      return { ok: false, reason: `compile_failed:${e.message}` };
+    }
+    const check = assertMandateProgram(program, mandate);
+    if (!check.ok) return { ok: false, reason: check.reason };
+    const hex = Buffer.from(program).toString('hex');
+    if (firstHex == null) {
+      firstHex = hex;
+      address = String(new algosdk.LogicSigAccount(program).address());
+    } else if (hex !== firstHex) {
+      return { ok: false, reason: 'program_mismatch_across_nodes' };
+    }
+  }
+  return { ok: true, address, sources: algods.length };
 }
 
 export { ZERO_ADDR };

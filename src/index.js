@@ -48,6 +48,16 @@ export {
   fundAgent,
 } from './peraConnector.js';
 
+// EXPERIMENTAL: stateful aggregate/recurring-budget app (see src/allowanceApp.js).
+export {
+  createAllowanceApp,
+  AllowanceApp,
+  checkSpend,
+  renderApprovalTeal,
+  renderClearTeal,
+  KEYS as ALLOWANCE_APP_KEYS,
+} from './allowanceApp.js';
+
 /** Convenience: an Algod client for a public node. */
 export function getAlgod({
   network = 'algorand-testnet',

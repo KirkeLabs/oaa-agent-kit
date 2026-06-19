@@ -334,9 +334,38 @@ oaa-agent-kit init [dir]                   # scaffold a starter agent
 
 Mandate options for `mandate-teal` / `address`: `--per-tx <microAlgos>` (default 1000000), `--allow <a,b,c>`, `--expiry <round>` (default 40000000), `--max-fee <microAlgos>` (default 2000), `--network algorand|algorand-testnet` (default testnet).
 
+## Advanced (experimental): on-chain aggregate & recurring budgets
+
+A stateless LogicSig bounds each *single* transaction; it cannot remember a running total. For a **cumulative** budget ("spend at most 10 ALGO ever") or a **recurring** one ("1 ALGO per ~day"), use the experimental **`AllowanceApp`** — a stateful Algorand Application that holds the budget and enforces the running limit **on-chain**:
+
+```js
+import { createAllowanceApp, LocalOwnerSigner, getAlgod, fundAgent } from '@kirkelabs/oaa-agent-kit';
+
+const algod = getAlgod({ network: 'algorand-testnet' });
+const owner = new LocalOwnerSigner({ mnemonic: process.env.OWNER_MNEMONIC });
+const agent = LocalOwnerSigner.random();
+const sp = await algod.getTransactionParams().do();
+
+const app = await createAllowanceApp({
+  algod, ownerSigner: owner, agentAddress: agent.address,
+  capMicroAlgos: 1_000_000,        // ≤ 1 ALGO per payment
+  budgetMicroAlgos: 10_000_000,    // 10 ALGO total...
+  periodRounds: 0,                 // ...or e.g. 24*3600/2.8 rounds for a rolling window
+  expiryRound: Number(sp.lastValid) + 1_000_000,
+});
+await app.fund(owner, 10_200_000);            // owner funds the app account
+await fundAgent(algod, owner, agent.address, 300_000); // agent needs a little ALGO for fees
+
+await app.spend(agent, { microAlgos: 400_000, receiver: someService });
+// the chain rejects any spend once cumulative spent + amount > budget
+await app.reclaim(owner);                      // owner sweeps the remainder back
+```
+
+> ⚠️ **Experimental & unaudited.** Stateful contracts are a much larger attack surface than the stateless mandate. Prefer the LogicSig mandate unless you specifically need consensus-enforced aggregate limits, and get an independent audit before holding material value. See [docs/SECURITY.md](./docs/SECURITY.md).
+
 ## Limitations
 
-- LogicSig mandates bound **single transactions** (per-tx cap, payee, expiry, no rekey/hostile close). The _aggregate_ budget is the funded balance; for richer running budgets/recurring allowances use a stateful app (on the roadmap).
+- LogicSig mandates bound **single transactions** (per-tx cap, payee, expiry, no rekey/hostile close). The _aggregate_ budget is the funded balance, the SDK `maxSpendMicroAlgos` cap, or the experimental on-chain [`AllowanceApp`](#advanced-experimental-on-chain-aggregate--recurring-budgets) above.
 - `compileMandate`/`AgentAccount.create`/funding/paying need an `algod` node (TestNet by default via AlgoNode).
 - This is infrastructure, not financial advice. Audit before mainnet. Start on TestNet.
 

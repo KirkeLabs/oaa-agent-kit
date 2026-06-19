@@ -94,11 +94,15 @@ sweep remaining funds back to the owner.
 
 ## Known limitations
 
-- **Aggregate/recurring budgets** need stateful logic (an app) — stateless
-  LogicSigs reason per-transaction. The funded balance is the on-chain aggregate
-  ceiling; for a tighter per-run limit (especially under `'ANY'`) use
-  `createAgent({ maxSpendMicroAlgos })`, which caps cumulative spend in the SDK.
-  A stateful "allowance app" is on the roadmap.
+- **Aggregate/recurring budgets** need stateful logic — stateless LogicSigs
+  reason per-transaction. Three levels are available: (1) the funded balance is
+  the on-chain aggregate ceiling; (2) `createAgent({ maxSpendMicroAlgos })` caps
+  cumulative spend in the SDK (defence in depth, not consensus); (3) the
+  **experimental** `AllowanceApp` (a stateful Application) enforces a cumulative
+  and optionally recurring budget **on-chain**. The app is a larger attack
+  surface and is **unaudited** — prefer the stateless mandate unless you need
+  consensus-enforced aggregate limits, and get an independent audit before
+  holding material value with it.
 - **Payment proofs must be verified on-chain.** The x402 proof is
   `{network, txid, nonce}`; a merchant MUST confirm the on-chain transaction
   (receiver, amount, note==nonce, confirmed, genesis) before releasing a

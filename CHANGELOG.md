@@ -3,6 +3,33 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/);
 versioning: [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-06-19
+
+### Added — EXPERIMENTAL stateful aggregate-budget app
+
+- **`AllowanceApp` / `createAllowanceApp`** — an Algorand **Application** (stateful
+  contract) that enforces a **cumulative** and optionally **recurring** budget
+  **on-chain**, which the stateless LogicSig mandate cannot. The owner deploys it
+  (agent address, per-tx cap, total budget, optional period in rounds, expiry)
+  and funds the app account; the agent calls `spend(amount, receiver)` and the
+  app checks `sender==agent`, `amount<=cap`, `round<=expiry`, and
+  `spent+amount<=budget` (resetting the window if the period elapsed) before
+  disbursing via an **inner transaction** and incrementing `spent`. The owner can
+  `reclaim` the remaining balance at any time.
+- **`checkSpend(...)`** — pure-JS mirror of the on-chain spend check.
+- **`renderApprovalTeal` / `renderClearTeal` / `ALLOWANCE_APP_KEYS`** exported for
+  review/tooling.
+
+Verified on live TestNet: in-budget spends pay via inner txn; over-budget,
+over-cap, and non-agent spends are **rejected by consensus** with `spent`
+unchanged; owner reclaim sweeps the app account.
+
+> ⚠ **Experimental and UNAUDITED.** Stateful contracts are a large attack
+> surface. Do not hold material value on MainNet without an independent audit.
+> The stateless LogicSig mandate remains the default, simpler primitive.
+
+47 tests across the suite (was 42).
+
 ## [0.4.0] — 2026-06-19
 
 Trust-minimised compile verification (roadmap item from the security review).

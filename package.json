@@ -1,6 +1,6 @@
 {
   "name": "@kirkelabs/oaa-agent-kit",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Create a fundable, Algorand-connected AI agent in minutes — it works on your behalf and pays for what it uses over x402, spending only within an on-chain LogicSig mandate (per-tx cap, payee allowlist, expiry). Pera Wallet-interoperable: fund and activate agents from your wallet. OAA (Open Agent Access) tooling included. Free & open source from Kirke Labs.",
   "type": "module",
   "bin": {

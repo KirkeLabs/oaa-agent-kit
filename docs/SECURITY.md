@@ -119,6 +119,25 @@ else, so at the SDK layer:
 - **Passports are bearer credentials.** Send them only over TLS to the intended
   audience; set `audience` (and optionally `nonce`) and verify them at the
   relying party. Default validity is short (1 hour).
+- **Indirect prompt injection.** Content the agent *fetches* (an x402 response, a
+  scraped page, a tool result) can contain instructions crafted to hijack an LLM
+  brain into paying an attacker or calling a dangerous tool. The chain still caps
+  the loss, but to prevent it: don't feed raw fetched content back to the brain as
+  trusted instructions; keep fetched data in a clearly-untrusted channel; pair an
+  LLM brain with an allowlist (not `'ANY'`), a tight `maxSpendMicroAlgos`, and the
+  `payAndFetch`/`fetchPolicy` **`confirm` hook** (a per-payment human-in-the-loop
+  or policy gate, invoked before any funds move). For high value, keep the brain
+  in a separate, low-privilege process from the owner key.
+- **Trust the `algod` node.** `getTransactionParams`/`compile`/balance reads come
+  from the configured node; a hostile node cannot exceed the on-chain mandate
+  (consensus is the backstop) but can cause failed/again-able transactions. Use a
+  node you trust, and `verifyMandateAddress` across independent nodes before
+  funding material value.
+- **DNS rebinding (residual).** The SSRF guard resolves and rejects hosts that
+  point to private ranges, but does not pin the connection IP, so a
+  resolve-public-then-connect-private rebinding is not fully prevented. Use
+  `fetchPolicy.allowedHosts` for untrusted brains — it is the authoritative
+  control.
 
 ## Known limitations
 

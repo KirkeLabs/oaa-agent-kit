@@ -133,6 +133,7 @@ export async function payAndFetch(
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxBytes = DEFAULT_MAX_BYTES,
     maxAmountMicroAlgos,
+    confirm,
   } = {},
 ) {
   // SSRF + TLS guard before any request leaves the process.
@@ -178,6 +179,19 @@ export async function payAndFetch(
     const e = new Error('Payment required but no payer configured');
     e.paymentRequired = req;
     throw e;
+  }
+
+  // Optional human-in-the-loop / policy gate. Invoked with the selected payment
+  // terms BEFORE any funds move; returning false (or throwing) aborts. Strongly
+  // recommended under `allowlist:'ANY'` or with an untrusted brain.
+  if (typeof confirm === 'function') {
+    const ok = await confirm({
+      url,
+      payTo: req.payTo,
+      amount: Number(req.amount),
+      network: req.network,
+    });
+    if (!ok) throw new Error('Payment aborted: not confirmed by confirm() hook');
   }
 
   const txid = await payer(req);

@@ -3,6 +3,29 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/);
 versioning: [SemVer](https://semver.org/).
 
+## [0.7.1] — 2026-06-19
+
+Follow-up hardening from a survey of emerging/agentic attack techniques.
+
+### Added
+
+- **`confirm` hook** in `payAndFetch`/`fetchPolicy`: an async per-payment gate
+  (human-in-the-loop or policy engine) invoked with `{url, payTo, amount,
+  network}` before any funds move; return false (or throw) to abort. Recommended
+  under `allowlist:'ANY'` or with an untrusted/LLM brain.
+- **Adversarial fuzz tests** (~3,000 cases) asserting `checkPayment`/`checkSpend`
+  never return `ok` for an out-of-policy input, plus an SSRF reject sweep.
+- **CI `npm audit --audit-level=high` gate** so a future dependency advisory
+  fails the build; `.npmrc` `engine-strict=true`.
+
+### Docs
+
+- New threat-model notes: **indirect prompt injection** (fetched content
+  hijacking an LLM brain) with mitigations, trusting the `algod` node, and the
+  DNS-rebinding residual (use `fetchPolicy.allowedHosts`).
+
+59 tests (was 56).
+
 ## [0.7.0] — 2026-06-19
 
 Hardening from a third audit round on new angles: SDK/integration layer (agent &

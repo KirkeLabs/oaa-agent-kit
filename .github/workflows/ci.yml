@@ -30,3 +30,5 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # Fail the build if a dependency develops a high/critical advisory.
+      - run: npm audit --audit-level=high

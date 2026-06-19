@@ -152,7 +152,7 @@ const STARTER_PKG = `{
   "name": "my-oaa-agent",
   "private": true,
   "type": "module",
-  "dependencies": { "@kirkelabs/oaa-agent-kit": "^0.7.0" }
+  "dependencies": { "@kirkelabs/oaa-agent-kit": "^0.7.1" }
 }
 `;
 

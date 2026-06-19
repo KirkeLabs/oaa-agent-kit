@@ -352,14 +352,22 @@ const app = await createAllowanceApp({
   budgetMicroAlgos: 10_000_000,    // 10 ALGO total...
   periodRounds: 0,                 // ...or e.g. 24*3600/2.8 rounds for a rolling window
   expiryRound: Number(sp.lastValid) + 1_000_000,
+  payees: [someService],           // allowed destinations (owner always allowed).
+                                   // [] = owner-only · 'ANY' = permissionless (warned)
 });
-await app.fund(owner, 10_200_000);            // owner funds the app account
+await app.fund(owner, 10_200_000);            // budget + min-balance + headroom
 await fundAgent(algod, owner, agent.address, 300_000); // agent needs a little ALGO for fees
 
 await app.spend(agent, { microAlgos: 400_000, receiver: someService });
-// the chain rejects any spend once cumulative spent + amount > budget
-await app.reclaim(owner);                      // owner sweeps the remainder back
+// the chain rejects: a non-allowlisted receiver, amount > cap, spent+amount > budget,
+// past expiry, or a caller other than the agent.
+await app.setAgent(owner, newAgentAddress);    // rotate a compromised agent key
+await app.reclaim(owner);                      // owner sweeps the remainder back (re-arms)
 ```
+
+**Payee policy mirrors the stateless mandate.** By default (empty `payees`) the agent can pay **only the owner**; list service addresses to allow them (max 4); `payees: 'ANY'` removes the restriction and makes it a **permissionless** spend account (any holder of the agent key — or a compromised agent — can send the budget anywhere, up to the cap each, until the budget/expiry stops it). The budget bounds your *total* loss either way.
+
+**Operational notes:** fund the app account with `budget + ~0.1 ALGO (min-balance) + headroom`; always `reclaim` before deleting the app (deleting while funded is refused on-chain, but reclaim is how you get funds back); the agent now holds a real key for fees — keep it disposable and rotate with `setAgent` if needed.
 
 > ⚠️ **Experimental & unaudited.** Stateful contracts are a much larger attack surface than the stateless mandate. Prefer the LogicSig mandate unless you specifically need consensus-enforced aggregate limits, and get an independent audit before holding material value. See [docs/SECURITY.md](./docs/SECURITY.md).
 

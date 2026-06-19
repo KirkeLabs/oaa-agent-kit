@@ -3,6 +3,37 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/);
 versioning: [SemVer](https://semver.org/).
 
+## [0.6.0] — 2026-06-19
+
+Hardening of the experimental `AllowanceApp` after two adversarial audits (an
+AVM/TEAL opcode review and a threat-model/economic review). The app was a strict
+payee-policy regression vs the stateless mandate; that and several other gaps are
+now closed. **Behaviour change: `createAllowanceApp` now takes a `payees` policy
+and enforces a destination restriction by default.**
+
+### Security (AllowanceApp)
+
+- **Payee policy (Critical fix).** `spend` previously paid ANY address — a
+  compromised agent could drain the whole budget to a stranger. The app now
+  enforces, on-chain, `receiver ∈ {owner} ∪ allowlist` by default; pass
+  `payees: [addr, …]` (≤4) or the explicit, warned `payees: 'ANY'` to opt into a
+  permissionless destination. Mirrors `createMandate`.
+- **Creation invariants enforced on-chain** (and in JS): `cap>0`, `budget>0`,
+  `cap<=budget`, `expiry>currentRound`, `period<=expiry` — prevents bricked/
+  stranded deployments and the `wstart+period` overflow.
+- **Delete no longer strands funds:** `DeleteApplication` is refused while the
+  app account holds more than min-balance (reclaim first).
+- **Agent rotation:** owner-only `setAgent(newAgent)` to retire a compromised
+  agent key without redeploying.
+- **`reclaim` re-arms** the counter (`spent=0`, `wstart=round`) so the app can be
+  safely re-funded.
+- **Adaptive fees** (congestion-safe) for `spend`/`reclaim`; `checkSpend` now
+  mirrors the payee check, enforces 2^53 safe-integer bounds, and (given
+  `appBalance`) the min-balance edge; `state()` returns addresses as base32.
+
+> ⚠ Still EXPERIMENTAL & UNAUDITED. Prefer the stateless mandate unless you need
+> consensus-enforced aggregate limits; independent audit before material value.
+
 ## [0.5.0] — 2026-06-19
 
 ### Added — EXPERIMENTAL stateful aggregate-budget app
